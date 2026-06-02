@@ -18,8 +18,21 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: KooshaPari/phenotypeActions/actions/policy-gate@main
-        with:
-          base_branch: main
-          block_merge_commits: true
-          require_layered_fix: true
+      # Inlined real policy check. The previous
+      # `KooshaPari/phenotypeActions/actions/policy-gate` reference pointed at a
+      # reusable-actions repo that does not exist, so this job failed on every
+      # PR. This enforces the same intent as `block_merge_commits: true`:
+      # reject merge commits in the PR's commit range against the base branch.
+      - name: Block merge commits
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          merges="$(git rev-list --merges "$BASE_SHA..$HEAD_SHA" || true)"
+          if [ -n "$merges" ]; then
+            echo "::error::Merge commits are not allowed in this PR. Rebase instead. Offending commits:"
+            echo "$merges"
+            exit 1
+          fi
+          echo "No merge commits in range — policy gate passed."

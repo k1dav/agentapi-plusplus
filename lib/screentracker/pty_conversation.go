@@ -597,6 +597,19 @@ func (c *PTYConversation) Messages() []ConversationMessage {
 	return c.messagesLocked()
 }
 
+// ClearMessages drops all messages from the conversation, marks the state
+// dirty so it is persisted, and notifies subscribers of the now-empty
+// conversation. Part of the Conversation interface.
+func (c *PTYConversation) ClearMessages() {
+	c.lock.Lock()
+	c.messages = nil
+	c.dirty = true
+	messages := c.messagesLocked()
+	c.lock.Unlock()
+
+	c.emitter.EmitMessages(messages)
+}
+
 // messagesLocked returns a copy of messages. Caller MUST hold c.lock.
 func (c *PTYConversation) messagesLocked() []ConversationMessage {
 	result := make([]ConversationMessage, len(c.messages))
