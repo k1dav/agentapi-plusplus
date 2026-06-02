@@ -1,3 +1,6 @@
+> **Work state:** ACTIVE · **Progress:** `████████▌░ 85%`
+> HTTP API controlling 11 agent CLIs; single cobra binary, full endpoint set served, build green. Upkeep: huma/chat-embed CI + flaky e2e. · updated 2026-06-02
+
 # AgentAPI++ (KooshaPari Fork)
 
 Multi-model AI routing gateway extending Anthropic's agentapi — Phenotype org fork (74 commits ahead, 7 fixes staged for upstream).
