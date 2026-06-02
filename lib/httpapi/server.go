@@ -441,7 +441,10 @@ func (s *Server) getStatus(ctx context.Context, input *struct{}) (*StatusRespons
 	defer s.mu.RUnlock()
 
 	status := s.conversation.Status()
-	agentStatus := convertStatus(status)
+	agentStatus, err := convertStatus(status)
+	if err != nil {
+		return nil, xerrors.Errorf("failed to convert status: %w", err)
+	}
 
 	resp := &StatusResponse{}
 	resp.Body.Status = agentStatus
