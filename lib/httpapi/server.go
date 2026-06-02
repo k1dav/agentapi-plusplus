@@ -403,6 +403,51 @@ func (s *Server) registerRoutes() {
 		o.Description = "Upload files to the specified upload path."
 	})
 
+	// DELETE /messages endpoint — clear the conversation history.
+	huma.Delete(s.api, "/messages", s.clearMessages, func(o *huma.Operation) {
+		o.Description = "Clears the conversation history with the agent."
+	})
+
+	// GET /messages/count endpoint.
+	huma.Get(s.api, "/messages/count", s.getMessagesCount, func(o *huma.Operation) {
+		o.Description = "Returns the number of messages in the conversation history."
+	})
+
+	// GET /info endpoint — agent version/type/feature flags.
+	huma.Get(s.api, "/info", s.getInfo, func(o *huma.Operation) {
+		o.Description = "Returns version, agent type, and feature flags for the running server."
+	})
+
+	// GET /config endpoint.
+	huma.Get(s.api, "/config", s.getConfig, func(o *huma.Operation) {
+		o.Description = "Returns the effective server configuration."
+	})
+
+	// GET /logs endpoint.
+	huma.Get(s.api, "/logs", s.getLogs, func(o *huma.Operation) {
+		o.Description = "Returns server log lines."
+	})
+
+	// GET /rate-limit endpoint.
+	huma.Get(s.api, "/rate-limit", s.getRateLimit, func(o *huma.Operation) {
+		o.Description = "Returns rate-limit status."
+	})
+
+	// GET /health endpoint.
+	huma.Get(s.api, "/health", s.getHealth, func(o *huma.Operation) {
+		o.Description = "Returns server health."
+	})
+
+	// GET /version endpoint.
+	huma.Get(s.api, "/version", s.getVersion, func(o *huma.Operation) {
+		o.Description = "Returns the server version."
+	})
+
+	// GET /ready endpoint.
+	huma.Get(s.api, "/ready", s.getReady, func(o *huma.Operation) {
+		o.Description = "Returns whether the server is ready to serve requests."
+	})
+
 	// GET /events endpoint
 	sse.Register(s.api, huma.Operation{
 		OperationID: "subscribeEvents",

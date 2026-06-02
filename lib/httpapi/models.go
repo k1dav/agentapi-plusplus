@@ -92,3 +92,71 @@ type UploadResponse struct {
 type UploadRequest struct {
 	File huma.FormFile `form:"file" required:"true" doc:"file that needs to be uploaded"`
 }
+
+// InfoResponse describes the running agent's version, type, and feature flags.
+type InfoResponse struct {
+	Body struct {
+		Version   string          `json:"version" doc:"Server version."`
+		AgentType mf.AgentType    `json:"agent_type" doc:"Type of the agent being used by the server."`
+		Features  map[string]bool `json:"features" doc:"Feature flags advertised by the server."`
+	}
+}
+
+// MessagesClearResponse is returned after clearing the conversation history.
+type MessagesClearResponse struct {
+	Body struct {
+		Ok    bool `json:"ok" doc:"Indicates whether the messages were cleared."`
+		Count int  `json:"count" doc:"Number of messages that were cleared."`
+	}
+}
+
+// MessagesCountResponse reports the number of messages in the conversation.
+type MessagesCountResponse struct {
+	Body struct {
+		Count int `json:"count" doc:"Number of messages in the conversation."`
+	}
+}
+
+// LogsResponse carries server log lines.
+type LogsResponse struct {
+	Body struct {
+		Logs []string `json:"logs" doc:"Server log lines."`
+	}
+}
+
+// RateLimitResponse reports rate-limit status.
+type RateLimitResponse struct {
+	Body struct {
+		Enabled  bool `json:"enabled" doc:"Whether rate limiting is enabled."`
+		Requests int  `json:"requests" doc:"Configured request budget."`
+	}
+}
+
+// ConfigResponse reports the effective server configuration.
+type ConfigResponse struct {
+	Body struct {
+		AgentType string `json:"agent_type" doc:"Type of the agent being used by the server."`
+		Port      int    `json:"port" doc:"Port the server is listening on."`
+	}
+}
+
+// HealthResponse reports server health.
+type HealthResponse struct {
+	Body struct {
+		Status string `json:"status" doc:"Health status ('ok')."`
+	}
+}
+
+// VersionResponse reports the server version.
+type VersionResponse struct {
+	Body struct {
+		Version string `json:"version" doc:"Server version."`
+	}
+}
+
+// ReadyResponse reports server readiness.
+type ReadyResponse struct {
+	Body struct {
+		Ready bool `json:"ready" doc:"Whether the server is ready to serve requests."`
+	}
+}
