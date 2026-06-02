@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.12.2
+
+### Fixes
+- drop x\b workaround for fixed Claude Code 0.2.70 paste-echo bug
+- handle partial/malformed tool call detection for claude-code
+- exorcise goroutine-leaking util.After from the codebase
+- make writeStabilize Phase 1 non-fatal when agents don't echo input
+
 ## v0.12.1
 
 ### Fixes
@@ -83,93 +91,79 @@
 
 ## v0.10.0
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
-## [Unreleased]
-
-### Added
-
-### Changed
-
-### Fixed
-
-## [0.10.0]
-
-### Added
+### Features
 - Feature to upload files to agentapi
 - Introduced clickable links
 - Added e2e tests
-
-### Fixed
 - Fixed the resizing scroll issue
 
-## [0.9.0]
+## v0.9.0
 
-### Added
+### Features
 - Add support for initial prompt via `-I` flag
 
-## [0.8.0]
+## v0.8.0
 
-### Added
-- Add support for GitHub Copilot
+### Features
+- Add Support for GitHub Copilot
+- Fix inconsistent openapi generation
 
-### Fixed
-- Fix inconsistent OpenAPI generation
+## v0.7.1
 
-## [0.7.1]
+### Fixes
 
-### Fixed
 - Adds headers to prevent proxies buffering SSE connections
 
-## [0.7.0]
+## v0.7.0
 
-### Added
-- Add support for Opencode
-- Add support for agent aliases
+### Features
+- Add Support for Opencode.
+- Add support for Agent aliases
 - Explicitly support AmazonQ
+- Bump NEXT.JS version
 
-### Changed
-- Bump Next.js version
+## v0.6.3
 
-## [0.6.3]
+- CI fixes.
 
-### Fixed
-- CI fixes
+## v0.6.2
 
-## [0.6.2]
+- Fix incorrect version string.
 
-### Fixed
-- Fix incorrect version string
+## v0.6.1
 
-## [0.6.1]
+### Features
+- Handle animation on Amp cli start screen.
 
-### Added
-- Handle animation on Amp CLI start screen
+## v0.6.0
 
-## [0.6.0]
+### Features
 
-### Added
-- Add support for Auggie CLI
+- Adds support for Auggie CLI.
 
-## [0.5.0]
+## v0.5.0
 
-### Added
-- Add support for Cursor CLI
+### Features
 
-## [0.4.1]
+- Adds support for Cursor CLI.
 
-### Fixed
-- Set `CGO_ENABLED=0` in build process to improve compatibility with older Linux versions
+## v0.4.1
 
-## [0.4.0]
+### Fixes
 
-### Added
+- Sets `CGO_ENABLED=0` in build process to improve compatibility with older Linux versions.
+
+## v0.4.0
+
+### Breaking changes
+
+- If you're running agentapi behind a reverse proxy, you'll now likely need to set the `--allowed-hosts` flag. See the [README](./README.md) for more details.
+
+### New features
+
 - Sourcegraph Amp support
-- Added a new `--allowed-hosts` flag to the `server` command
+- Added a new `--allowed-hosts` flag to the `server` command.
 
-### Changed
-- If running agentapi behind a reverse proxy, set the `--allowed-hosts` flag. See [README](./README.md) for details.
+### Fixes
 
-### Fixed
-- Updated Codex support after its TUI was updated in a recent version
+- Updated Codex support after its TUI has been updated in a recent version.

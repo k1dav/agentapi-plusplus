@@ -12,15 +12,13 @@ import (
 type MessageType string
 
 const (
-	MessageTypeUser    MessageType = "user"
-	MessageTypeRaw     MessageType = "raw"
-	MessageTypeCommand MessageType = "command"
+	MessageTypeUser MessageType = "user"
+	MessageTypeRaw  MessageType = "raw"
 )
 
 var MessageTypeValues = []MessageType{
 	MessageTypeUser,
 	MessageTypeRaw,
-	MessageTypeCommand,
 }
 
 func (m MessageType) Schema(r huma.Registry) *huma.Schema {
@@ -51,65 +49,12 @@ type Message struct {
 	Time    time.Time           `json:"time" doc:"Timestamp of the message"`
 }
 
-// LogsResponse represents server logs
-type LogsResponse struct {
-	Body struct {
-		Logs []string `json:"logs" doc:"Server logs"`
-	}
-}
-
-// RateLimitResponse represents rate limit status
-type RateLimitResponse struct {
-	Body struct {
-		Enabled  bool `json:"enabled" doc:"Whether rate limiting is enabled"`
-		Requests int  `json:"requests" doc:"Requests per minute limit"`
-	}
-}
-
-// ConfigResponse represents the server configuration
-type ConfigResponse struct {
-	Body struct {
-		AgentType string `json:"agent_type" doc:"Type of the agent"`
-		Port      int    `json:"port" doc:"Server port"`
-	}
-}
-
-// HealthResponse represents the health check response
-type HealthResponse struct {
-	Body struct {
-		Status string `json:"status" doc:"Health status"`
-	}
-}
-
-// VersionResponse represents the server version response.
-type VersionResponse struct {
-	Body struct {
-		Version string `json:"version" doc:"AgentAPI version"`
-	}
-}
-
-// ReadyResponse represents the readiness check response
-type ReadyResponse struct {
-	Body struct {
-		Ready bool `json:"ready" doc:"Whether the server is ready"`
-	}
-}
-
 // StatusResponse represents the server status
 type StatusResponse struct {
 	Body struct {
 		Status    AgentStatus  `json:"status" doc:"Current agent status. 'running' means that the agent is processing a message, 'stable' means that the agent is idle and waiting for input."`
 		AgentType mf.AgentType `json:"agent_type" doc:"Type of the agent being used by the server."`
 		Transport Transport    `json:"transport" doc:"Backend transport being used ('acp' or 'pty')."`
-	}
-}
-
-// InfoResponse represents the server and agent info
-type InfoResponse struct {
-	Body struct {
-		Version   string          `json:"version" doc:"AgentAPI version"`
-		AgentType mf.AgentType    `json:"agent_type" doc:"Type of the agent being used by the server."`
-		Features  map[string]bool `json:"features" doc:"Supported features"`
 	}
 }
 
@@ -120,24 +65,9 @@ type MessagesResponse struct {
 	}
 }
 
-// MessagesCountResponse represents the count of messages
-type MessagesCountResponse struct {
-	Body struct {
-		Count int `json:"count" doc:"Number of messages in the conversation history"`
-	}
-}
-
-// MessagesClearResponse represents the response after clearing messages
-type MessagesClearResponse struct {
-	Body struct {
-		Ok    bool `json:"ok" doc:"Whether messages were cleared"`
-		Count int  `json:"count" doc:"Number of messages cleared"`
-	}
-}
-
 type MessageRequestBody struct {
-	Content string      `json:"content" example:"/help" doc:"Message content"`
-	Type    MessageType `json:"type" doc:"A 'user' type message will be logged as a user message in the conversation history and submitted to the agent. AgentAPI will wait until the agent starts carrying out the task described in the message before responding. A 'raw' type message will be written directly to the agent's terminal session as keystrokes and will not be saved in the conversation history. 'raw' messages are useful for sending escape sequences to the terminal. A 'command' type message sends a slash command directly to the agent (e.g., /help, /resume, /undo)."`
+	Content string      `json:"content" example:"Hello, agent!" doc:"Message content"`
+	Type    MessageType `json:"type" doc:"A 'user' type message will be logged as a user message in the conversation history and submitted to the agent. AgentAPI will wait until the agent starts carrying out the task described in the message before responding. A 'raw' type message will be written directly to the agent's terminal session as keystrokes and will not be saved in the conversation history. 'raw' messages are useful for sending escape sequences to the terminal."`
 }
 
 // MessageRequest represents a request to create a new message

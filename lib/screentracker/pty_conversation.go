@@ -3,11 +3,11 @@ package screentracker
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -15,6 +15,26 @@ import (
 	"github.com/coder/agentapi/lib/util"
 	"github.com/coder/quartz"
 	"golang.org/x/xerrors"
+)
+
+const (
+	// writeStabilizeEchoTimeout is the timeout for the echo
+	// detection WaitFor loop in writeStabilize Phase 1. The
+	// effective ceiling may be slightly longer because the
+	// stability check inside the condition runs outside
+	// WaitFor's timeout select. Non-echoing agents (e.g. TUI
+	// agents using bracketed paste) will hit this timeout,
+	// which is non-fatal.
+	//
+	// TODO: move to PTYConversationConfig if agents need
+	// different echo detection windows.
+	writeStabilizeEchoTimeout = 2 * time.Second
+
+	// writeStabilizeProcessTimeout is the maximum time to wait
+	// for the screen to change after sending a carriage return.
+	// This detects whether the agent is actually processing the
+	// input.
+	writeStabilizeProcessTimeout = 15 * time.Second
 )
 
 // A screenSnapshot represents a snapshot of the PTY at a specific time.
@@ -356,12 +376,6 @@ func (c *PTYConversation) snapshotLocked(screen string) {
 	c.updateLastAgentMessageLocked(screen, snapshot.timestamp)
 }
 
-// isAskUserQuestionPrompt detects if the screen contains an AskUserQuestion TUI prompt
-// by checking for the "Enter to select" indicator that appears in interactive menus.
-func isAskUserQuestionPrompt(screen string) bool {
-	return strings.Contains(screen, "Enter to select")
-}
-
 func (c *PTYConversation) Send(messageParts ...MessagePart) error {
 	// Validate message content before enqueueing
 	message := buildStringFromMessageParts(messageParts)
@@ -373,12 +387,7 @@ func (c *PTYConversation) Send(messageParts ...MessagePart) error {
 	}
 
 	c.lock.Lock()
-	// Auto-skip status check for AskUserQuestion prompts
-	// These interactive TUI menus never stabilize because the cursor keeps blinking
-	currentScreen := c.cfg.AgentIO.ReadScreen()
-	skipCheck := isAskUserQuestionPrompt(currentScreen)
-
-	if !skipCheck && c.statusLocked() != ConversationStatusStable {
+	if c.statusLocked() != ConversationStatusStable {
 		c.lock.Unlock()
 		return ErrMessageValidationChanging
 	}
@@ -423,7 +432,19 @@ func (c *PTYConversation) sendMessage(ctx context.Context, messageParts ...Messa
 	return nil
 }
 
-// writeStabilize writes messageParts to the screen and waits for the screen to stabilize after the message is written.
+// writeStabilize writes messageParts to the PTY and waits for
+// the agent to process them. It operates in two phases:
+//
+// Phase 1 (echo detection): writes the message text and waits
+// for the screen to change and stabilize. This detects agents
+// that echo typed input. If the screen doesn't change within
+// writeStabilizeEchoTimeout, this is non-fatal. Many TUI
+// agents buffer bracketed-paste input without rendering it.
+//
+// Phase 2 (processing detection): writes a carriage return
+// and waits for the screen to change, indicating the agent
+// started processing. This phase is fatal on timeout: if the
+// agent doesn't react to Enter, it's unresponsive.
 func (c *PTYConversation) writeStabilize(ctx context.Context, messageParts ...MessagePart) error {
 	screenBeforeMessage := c.cfg.AgentIO.ReadScreen()
 	for _, part := range messageParts {
@@ -431,33 +452,49 @@ func (c *PTYConversation) writeStabilize(ctx context.Context, messageParts ...Me
 			return xerrors.Errorf("failed to write message part: %w", err)
 		}
 	}
-	// wait for the screen to stabilize after the message is written
+	// Phase 1: wait for the screen to stabilize after the
+	// message is written (echo detection).
 	if err := util.WaitFor(ctx, util.WaitTimeout{
-		Timeout:     15 * time.Second,
+		Timeout:     writeStabilizeEchoTimeout,
 		MinInterval: 50 * time.Millisecond,
 		InitialWait: true,
 		Clock:       c.cfg.Clock,
 	}, func() (bool, error) {
 		screen := c.cfg.AgentIO.ReadScreen()
 		if screen != screenBeforeMessage {
+			stabilityTimer := c.cfg.Clock.NewTimer(1 * time.Second)
 			select {
 			case <-ctx.Done():
+				stabilityTimer.Stop()
 				return false, ctx.Err()
-			case <-util.After(c.cfg.Clock, 1*time.Second):
+			case <-stabilityTimer.C:
 			}
+			stabilityTimer.Stop()
 			newScreen := c.cfg.AgentIO.ReadScreen()
 			return newScreen == screen, nil
 		}
 		return false, nil
 	}); err != nil {
-		return xerrors.Errorf("failed to wait for screen to stabilize: %w", err)
+		if !errors.Is(err, util.WaitTimedOut) {
+			// Context cancellation or condition errors are fatal.
+			return xerrors.Errorf("failed to wait for screen to stabilize: %w", err)
+		}
+		// Phase 1 timeout is non-fatal: the agent may not echo
+		// input (e.g. TUI agents buffer bracketed-paste content
+		// internally). Proceed to Phase 2 to send the carriage
+		// return.
+		c.cfg.Logger.Info(
+			"echo detection timed out, sending carriage return",
+			"timeout", writeStabilizeEchoTimeout,
+		)
 	}
 
-	// wait for the screen to change after the carriage return is written
+	// Phase 2: wait for the screen to change after the
+	// carriage return is written (processing detection).
 	screenBeforeCarriageReturn := c.cfg.AgentIO.ReadScreen()
 	lastCarriageReturnTime := time.Time{}
 	if err := util.WaitFor(ctx, util.WaitTimeout{
-		Timeout:     15 * time.Second,
+		Timeout:     writeStabilizeProcessTimeout,
 		MinInterval: 25 * time.Millisecond,
 		Clock:       c.cfg.Clock,
 	}, func() (bool, error) {
@@ -470,11 +507,14 @@ func (c *PTYConversation) writeStabilize(ctx context.Context, messageParts ...Me
 				return false, xerrors.Errorf("failed to write carriage return: %w", err)
 			}
 		}
+		crTimer := c.cfg.Clock.NewTimer(25 * time.Millisecond)
 		select {
 		case <-ctx.Done():
+			crTimer.Stop()
 			return false, ctx.Err()
-		case <-util.After(c.cfg.Clock, 25*time.Millisecond):
+		case <-crTimer.C:
 		}
+		crTimer.Stop()
 		screen := c.cfg.AgentIO.ReadScreen()
 
 		return screen != screenBeforeCarriageReturn, nil
@@ -533,6 +573,14 @@ func (c *PTYConversation) statusLocked() ConversationStatus {
 		return ConversationStatusChanging
 	}
 
+	// The send loop gates stableSignal on initialPromptReady.
+	// Report "changing" until readiness is detected so that Send()
+	// rejects with ErrMessageValidationChanging instead of blocking
+	// indefinitely on a stableSignal that will never fire.
+	if !c.initialPromptReady {
+		return ConversationStatusChanging
+	}
+
 	// Handle initial prompt readiness: report "changing" until the queue is drained
 	// to avoid the status flipping "changing" -> "stable" -> "changing"
 	if len(c.outboundQueue) > 0 || c.sendingMessage {
@@ -547,19 +595,6 @@ func (c *PTYConversation) Messages() []ConversationMessage {
 	defer c.lock.Unlock()
 
 	return c.messagesLocked()
-}
-
-func (c *PTYConversation) ClearMessages() {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-
-	c.messages = []ConversationMessage{
-		{
-			Message: "",
-			Role:    ConversationRoleAgent,
-			Time:    c.cfg.Clock.Now(),
-		},
-	}
 }
 
 // messagesLocked returns a copy of messages. Caller MUST hold c.lock.
