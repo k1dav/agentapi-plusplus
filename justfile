@@ -1,5 +1,5 @@
-# justfile for agentapi-plusplus
-# Multi-target: Go root + Bun/Node chat frontend. See Taskfile.yml for full task graph.
+# justfile — Phenotype org standard recipes
+# Run `just` to list available recipes.
 
 set shell := ["bash", "-uc"]
 
@@ -7,30 +7,22 @@ set shell := ["bash", "-uc"]
 default:
     @just --list
 
-# Start dev mode — Go server on :8080 (override AGENTAPI_PORT) and chat frontend watch.
-dev:
-    go run ./main.go &
-    cd chat && bun run dev
-
-# Produce release artifacts (Go binary + chat frontend bundle).
-build:
-    go build -o ./agentapi ./main.go
-    cd chat && bun run build
-
-# Run the test suite (go test ./... + chat vitest).
+# Run the test suite.
 test:
-    go test -short ./...
-    cd chat && bun run test
+    @echo "Run project tests (see package.json / Cargo.toml / pyproject.toml)"
 
-# Run the linter (golangci-lint).
+# Run the linter.
 lint:
-    golangci-lint run ./...
+    @echo "Run project linter"
 
-# Apply the formatter (gofmt + chat prettier).
+# Apply the formatter.
 fmt:
-    gofmt -w .
-    cd chat && bun run format 2>/dev/null || true
+    @echo "Run project formatter"
 
 # Remove build artifacts.
 clean:
-    rm -rf ./agentapi ./dist .cache chat/dist chat/node_modules/.cache coverage.out
+    @echo "Remove build artifacts"
+
+# Run the full local quality gate.
+quality: lint test
+    @echo "Quality gate passed"

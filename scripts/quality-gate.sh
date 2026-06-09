@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # quality-gate.sh -- thin orchestrator around language-specific checks.
 # Bash is appropriate here as <=5-line glue: it dispatches to native tools
 # (cargo/npm/uv) which do the actual work; rewriting as Rust/Go would
