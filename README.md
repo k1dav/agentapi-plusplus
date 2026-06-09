@@ -1,3 +1,14 @@
+## Work State
+
+| Field | Value |
+|---|---|
+| Last commit | 2026-06-08 16:57:39 -0700 |
+| Open issues | 30 |
+| Open PRs | 7 |
+| Focus | agentapi-cpp-port |
+
+Progress: ████████░░ 80%
+
 > **Work state:** ACTIVE · **Progress:** `████████▌░ 85%`
 > HTTP API controlling 11 agent CLIs; single cobra binary, full endpoint set served, build green. Upkeep: huma/chat-embed CI + flaky e2e. · updated 2026-06-02
 
