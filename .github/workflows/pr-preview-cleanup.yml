@@ -4,14 +4,16 @@ on:
   pull_request:
     types: [closed]
 
-permissions:
-  contents: write
+permissions: read-all
+
+concurrency:
+  group: pr-preview-cleanup-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
 
 jobs:
   cleanup:
     name: Delete PR Release
     runs-on: ubuntu-latest
-
     steps:
       - name: Delete PR Release
         env:

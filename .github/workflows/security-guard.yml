@@ -7,15 +7,18 @@ on:
     branches:
       - "**"
 
-permissions:
-  contents: read
+permissions: read-all
+
+concurrency:
+  group: security-guard-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   guard:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
 
@@ -23,6 +26,6 @@ jobs:
         run: python -m pip install --quiet "ggshield==1.35.0"
 
       - name: Run pre-commit guard checks
-        uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd # v3.0.1
+        uses: pre-commit/action@3a8a4b01de6bcb06e97da70c185e2e9c1f1dabd7 # v3.0.1
         with:
           extra_args: --hook-stage pre-commit --config .pre-commit-config.yaml --show-diff-on-failure
