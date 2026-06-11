@@ -9,6 +9,7 @@ type contextKey int
 
 const (
 	loggerKey contextKey = iota
+	requestIDKey
 )
 
 // WithLogger returns a new context with the provided logger
@@ -24,13 +25,30 @@ func From(ctx context.Context) *slog.Logger {
 	panic("no logger found in context")
 }
 
-// plucked from log/slog
-// remove once we update to go 1.24
-var DiscardHandler slog.Handler = discardHandler{}
+// WithRequestID returns a new context with the provided request ID
+// attached. Handlers downstream can call RequestID to retrieve it for
+// logging, response headers, or propagation to outbound calls.
+func WithRequestID(ctx context.Context, id string) context.Context {
+	return context.WithValue(ctx, requestIDKey, id)
+}
 
-type discardHandler struct{}
+// RequestID retrieves the request ID previously attached via
+// WithRequestID, returning the empty string if none is present. Callers
+// that require a value (e.g. middleware that synthesises a fallback)
+// should check the result and supply their own.
+func RequestID(ctx context.Context) string {
+	if id, ok := ctx.Value(requestIDKey).(string); ok {
+		return id
+	}
+	return ""
+}
 
-func (dh discardHandler) Enabled(context.Context, slog.Level) bool  { return false }
-func (dh discardHandler) Handle(context.Context, slog.Record) error { return nil }
-func (dh discardHandler) WithAttrs(attrs []slog.Attr) slog.Handler  { return dh }
-func (dh discardHandler) WithGroup(name string) slog.Handler        { return dh }
+// WithLoggerAndRequestID is a small convenience for HTTP middleware:
+// attach a per-request logger (already enriched with request_id) and
+// the request ID itself in a single call. Equivalent to calling
+// WithLogger and WithRequestID separately.
+func WithLoggerAndRequestID(ctx context.Context, logger *slog.Logger, id string) context.Context {
+	ctx = WithRequestID(ctx, id)
+	ctx = WithLogger(ctx, logger)
+	return ctx
+}

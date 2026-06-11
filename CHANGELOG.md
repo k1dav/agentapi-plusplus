@@ -1,5 +1,37 @@
 # Changelog
 
+## Unreleased
+
+### Fixes
+- Prevent nil-pointer panic when SIGINT interrupts a server in
+  `--experimental-acp` mode. The shutdown path now skips the PTY
+  process close in ACP transport, where the cleanup is owned by the
+  ACP wait goroutine.
+- Coordinate the agentapi binary build across parallel e2e subtests
+  with a per-process `sync.Once` and an atomic temp-file rename, so
+  no subtest can launch a half-rebuilt executable and observe
+  transient `text file busy` or `exec format error` failures.
+
+### Features
+- Per-request IDs and structured access logging. chi's `RequestID`
+  middleware is now wired in as the first middleware on the httpapi
+  router, and a small `requestLogger` derives a per-request
+  `*slog.Logger` enriched with the id. Every request emits one
+  structured log line with method, path, status, bytes, duration,
+  and `request_id`; status-aware level selection (Warn / Error for
+  4xx / 5xx) makes high-priority failures easy to alert on.
+- `lib/logctx` gains `WithRequestID` / `RequestID` /
+  `WithLoggerAndRequestID` helpers for callers that want to log
+  with the same id outside the HTTP request scope. The local
+  `logctx.DiscardHandler` placeholder has been retired in favour of
+  `slog.DiscardHandler` (Go 1.24+ standard library).
+
+### Documentation
+- Added `examples/` with quick-start snippets for every supported
+  agent (claude, goose, aider, codex, gemini, copilot, amp, auggie,
+  cursor, amazonq, opencode), state-persistence and ACP variants,
+  and reference Go and Python clients.
+
 ## v0.12.2
 
 ### Fixes

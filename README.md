@@ -14,6 +14,15 @@ Progress: ████████░░ 80%
 
 # AgentAPI++ (KooshaPari Fork)
 
+## State
+
+Progress: `[████████▌░] 85%` — HTTP gateway for 11 agent CLIs (forked from anthropics/agentapi).
+
+_Updated 2026-06-08 — audit pass._
+
+[![CI](https://github.com/KooshaPari/agentapi-plusplus/actions/workflows/ci.yml/badge.svg)](https://github.com/KooshaPari/agentapi-plusplus/actions)
+[![License](https://img.shields.io/github/license/KooshaPari/agentapi-plusplus)](LICENSE)
+
 Multi-model AI routing gateway extending Anthropic's agentapi — Phenotype org fork (74 commits ahead, 7 fixes staged for upstream).
 
 **Status:** active
@@ -291,3 +300,15 @@ Route LLM requests through cliproxy++ for cost optimization:
 ## License
 
 MIT License - see LICENSE file
+
+## Description
+
+Phenotype org fork of [Anthropic's agentapi](https://github.com/anthropics/agentapi). HTTP API controlling 11 agent CLIs (Claude Code, Cursor, Aider, Goose, Codex, Gemini, Copilot, Amp, Auggie, Opencode, Amazon Q) over an in-memory PTY.
+
+## Usage
+
+Build: `go build -o agentapi main.go`. Run: `./agentapi server --type claude -- claude`. Server listens on `:3284`, OpenAPI at `/openapi.json`. Full endpoint + integration examples above.
+
+## Contributing
+
+PRs welcome. See `CONTRIBUTING.md`. New agent types add a `lib/msgfmt/<name>.go` formatter and an entry in `Supported Agents`.
