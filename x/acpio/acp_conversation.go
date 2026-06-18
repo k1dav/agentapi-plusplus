@@ -187,15 +187,6 @@ func (c *ACPConversation) Stop() {
 	c.cancel()
 }
 
-// ClearMessages resets the conversation history.
-func (c *ACPConversation) ClearMessages() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.messages = nil
-	c.nextID = 0
-	c.streamingResponse.Reset()
-}
-
 // Text returns the current streaming response text.
 func (c *ACPConversation) Text() string {
 	c.mu.Lock()
