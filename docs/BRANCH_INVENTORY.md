@@ -1,34 +1,48 @@
-# Branch inventory — 2026-06-18
+# Branch inventory (Wave 15 G15 hygiene)
 
-Wave 15 (G15) hygiene. Unique commits vs `origin/main` at audit time.
+**ADR:** [ADR-ECO-007](https://github.com/KooshaPari/phenotype-registry/blob/main/docs/adrs/ADR-ECO-007-gateway-merge-superset.md) — gateway merge superset boundaries  
+**Lane:** `feat/wave15-g15-branch-prune`  
+**Snapshot date:** 2026-06-18  
+**Main HEAD:** `2e5bc97b44397730e2593d818e2be6d0697630cf`
 
-| Unique commits | Branch | Class | Action |
-|----------------|--------|-------|--------|
-| 22 | feat/wave-h2-branch-superset | upstream/docs | Merge PR #532 |
-| 18 | complete-sync | upstream | Review — may supersede #531 |
-| 18 | chore/pin-actions | chore | Batch merge or close |
-| 18 | chore/worklog-seed-agentapi-plusplus | chore | Batch merge or close |
-| 15 | backup/20260426-reconcile-0c5f958 | backup | Cherry-pick or delete |
-| 14 | chore/* (multiple) | chore | Batch merge theme groups |
-| 13 | ci/add-golangci-lint | ci | Merge if green |
-| 10 | chore/audit-agentapi-plusplus-2026-06-08 | chore | Merge if green |
-| 9 | chore/SD1-004-sota-2026-06-11 | chore | Merge if green |
-| 8 | agentapi-plusplus/chore/sast-pin-governance-clean | chore | Merge if green |
-| 8 | docs/agentapi-plusplus-sladge-* | docs | Fold into docs/ |
-| 1 | backup/20260426-agentapi-local-main-4a3c145 | backup | **Delete** post-diff |
-| 1 | sync/upstream-v0.12.2 | upstream | **Delete** post-#531 |
-| 1 | fix/pull-request-target | fix | **Delete** if merged |
-| 1 | dependabot/* (5) | deps | Merge PRs #508–514 |
-| 2 | wip/2026-06-17-prepush-agentapi-plusplus-stash | wip | **Delete** after review |
+## Policy
 
-**Target:** ≤5 remote branches (`main` + active integration lanes).
+Remote branches are capped at **≤5** per Wave 15 ledger. After G15 cleanup the retained set is:
 
-## Post-merge delete candidates
+| Branch | Role |
+|--------|------|
+| `main` | Canonical integration branch |
+| `dependabot/npm_and_yarn/agentapi-plusplus/chat/babel/plugin-transform-modules-systemjs-7.29.4` | Open deps PR #509 |
+| `dependabot/npm_and_yarn/agentapi-plusplus/chat/fast-uri-3.1.2` | Open deps PR #508 |
 
-After PR merges, delete remote refs that have no unique commits or are fully absorbed:
+`feat/wave15-g15-branch-prune` is the active hygiene lane (this PR) and is deleted after merge.
+
+## Pre-merge context
+
+- **#531** merged superset + `complete-sync` content into `main`.
+- **#532** merged upstream sync policy docs.
+- **#533** merged initial branch inventory (superseded by this CSV + prune).
+
+## Deleted branches (Wave 15 G15)
+
+| Class | Count | Rationale |
+|-------|-------|-----------|
+| `backup/*` | 2 | Safety snapshots; unique commits absorbed or obsolete post-#531 |
+| `complete-sync` | 1 | Superset merged via #531 |
+| `sync/upstream-v0.12.2`, `fix/pull-request-target` | 2 | Upstream sync lanes merged pre-audit |
+| `feat/wave-h2-branch-superset`, `feat/wave-h1-funding-yml` | 2 | Wave H lanes merged (#531, #530) |
+| `chore/*`, `ci/*`, `docs/*`, `wip/*` | 25 | Stale batch branches; no unique value post-superset |
+| `dependabot/.../next-15.5.18` | 1 | Superseded by #514 on `main` |
+
+Eight branches were already deleted on remote before this audit (`deleted-pre-audit` in CSV).
+
+## Machine-readable inventory
+
+See [`branch-inventory.csv`](branch-inventory.csv) for the full pre-prune snapshot with `ahead`, `behind`, `class`, and `action` columns.
+
+## Verification
 
 ```bash
-git push origin --delete sync/upstream-v0.12.2 fix/pull-request-target \
-  backup/20260426-agentapi-local-main-4a3c145 \
-  wip/2026-06-17-prepush-agentapi-plusplus-stash
+git fetch origin --prune
+git branch -r | wc -l   # expect ≤5 including HEAD alias
 ```

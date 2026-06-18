@@ -1,5 +1,7 @@
 # AgentAPI++ Specification
 
+> **Wave 15 (G15)** — Platform agent terminal control plane. Branch hygiene and superset merge per [ADR-ECO-007](https://github.com/KooshaPari/phenotype-registry/blob/main/docs/adrs/ADR-ECO-007-gateway-merge-superset.md) in phenotype-registry. See [`docs/BRANCH_INVENTORY.md`](docs/BRANCH_INVENTORY.md).
+
 ## Repository Overview
 
 AgentAPI++ provides API interfaces for agent operations.
