@@ -77,6 +77,15 @@ func NewACPConversation(ctx context.Context, agentIO ChunkableAgentIO, logger *s
 	return c
 }
 
+// ClearMessages removes all messages from the conversation history.
+func (c *ACPConversation) ClearMessages() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.messages = nil
+	c.nextID = 0
+	c.streamingResponse.Reset()
+}
+
 // Messages returns the conversation history.
 func (c *ACPConversation) Messages() []st.ConversationMessage {
 	c.mu.Lock()
