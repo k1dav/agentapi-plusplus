@@ -2,23 +2,16 @@ package httpapi
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
-	"net/url"
 	"os"
-	"path/filepath"
-	"slices"
 	"sort"
 	"strings"
 	"sync"
 	"time"
-	"unicode"
 
 	"github.com/coder/agentapi/internal/version"
 	"github.com/coder/agentapi/lib/logctx"
@@ -31,7 +24,6 @@ import (
 	"github.com/danielgtaylor/huma/v2/adapters/humachi"
 	"github.com/danielgtaylor/huma/v2/sse"
 	"github.com/go-chi/chi/v5"
-	chimw "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"golang.org/x/xerrors"
 )
@@ -118,87 +110,7 @@ type ServerConfig struct {
 
 // Validate allowed hosts don't contain whitespace, commas, schemes, or ports.
 // Viper/Cobra use different separators (space for env vars, comma for flags),
-// so these characters likely indicate user error.
-func parseAllowedHosts(input []string) ([]string, error) {
-	if len(input) == 0 {
-		return nil, fmt.Errorf("the list must not be empty")
-	}
-	if slices.Contains(input, "*") {
-		return []string{"*"}, nil
-	}
-	// First pass: whitespace & comma checks (surface these errors first)
-	// Viper/Cobra use different separators (space for env vars, comma for flags),
-	// so these characters likely indicate user error.
-	for _, item := range input {
-		for _, r := range item {
-			if unicode.IsSpace(r) {
-				return nil, fmt.Errorf("'%s' contains whitespace characters, which are not allowed", item)
-			}
-		}
-		if strings.Contains(item, ",") {
-			return nil, fmt.Errorf("'%s' contains comma characters, which are not allowed", item)
-		}
-	}
-	// Second pass: scheme check
-	for _, item := range input {
-		if strings.Contains(item, "http://") || strings.Contains(item, "https://") {
-			return nil, fmt.Errorf("'%s' must not include http:// or https://", item)
-		}
-	}
-	hosts := make([]*url.URL, 0, len(input))
-	// Third pass: url parse
-	for _, item := range input {
-		trimmed := strings.TrimSpace(item)
-		u, err := url.Parse("http://" + trimmed)
-		if err != nil {
-			return nil, fmt.Errorf("'%s' is not a valid host: %w", item, err)
-		}
-		hosts = append(hosts, u)
-	}
-	// Fourth pass: port check
-	for _, u := range hosts {
-		if u.Port() != "" {
-			return nil, fmt.Errorf("'%s' must not include a port", u.Host)
-		}
-	}
-	hostStrings := make([]string, 0, len(hosts))
-	for _, u := range hosts {
-		hostStrings = append(hostStrings, u.Hostname())
-	}
-	return hostStrings, nil
-}
 
-// Validate allowed origins
-func parseAllowedOrigins(input []string) ([]string, error) {
-	if len(input) == 0 {
-		return nil, fmt.Errorf("the list must not be empty")
-	}
-	if slices.Contains(input, "*") {
-		return []string{"*"}, nil
-	}
-	// Viper/Cobra use different separators (space for env vars, comma for flags),
-	// so these characters likely indicate user error.
-	for _, item := range input {
-		for _, r := range item {
-			if unicode.IsSpace(r) {
-				return nil, fmt.Errorf("'%s' contains whitespace characters, which are not allowed", item)
-			}
-		}
-		if strings.Contains(item, ",") {
-			return nil, fmt.Errorf("'%s' contains comma characters, which are not allowed", item)
-		}
-	}
-	origins := make([]string, 0, len(input))
-	for _, item := range input {
-		trimmed := strings.TrimSpace(item)
-		u, err := url.Parse(trimmed)
-		if err != nil {
-			return nil, fmt.Errorf("'%s' is not a valid origin: %w", item, err)
-		}
-		origins = append(origins, fmt.Sprintf("%s://%s", u.Scheme, u.Host))
-	}
-	return origins, nil
-}
 
 // NewServer creates a new server instance
 func NewServer(ctx context.Context, config ServerConfig) (*Server, error) {
@@ -221,21 +133,6 @@ func NewServer(ctx context.Context, config ServerConfig) (*Server, error) {
 
 	logger.Info(fmt.Sprintf("Allowed hosts: %s", strings.Join(allowedHosts, ", ")))
 	logger.Info(fmt.Sprintf("Allowed origins: %s", strings.Join(allowedOrigins, ", ")))
-
-	// Request ID: chi's RequestID middleware honours an inbound
-	// X-Request-ID header (useful for client-driven correlation) and
-	// otherwise generates a fresh UUID. The id is exposed both on the
-	// response header and under chimw.RequestIDKey in the request
-	// context. We register it before the host and CORS middleware so
-	// even a rejected request still gets a request ID stamped on it,
-	// making 4xx responses trivially correlatable to server logs.
-	router.Use(chimw.RequestID)
-
-	// requestLogger enriches the per-request context with a logger
-	// that already carries request_id, so handlers (and any deeper
-	// code that calls logctx.From) can simply use the context logger
-	// without re-deriving the attribute on every line.
-	router.Use(requestLogger(logger))
 
 	// Enforce allowed hosts in a custom middleware that ignores the port during matching.
 	badHostHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -353,106 +250,7 @@ func (s *Server) Handler() http.Handler {
 
 // hostAuthorizationMiddleware enforces that the request Host header matches one of the allowed
 // hosts, ignoring any port in the comparison. If allowedHosts is empty, all hosts are allowed.
-// Always uses url.Parse("http://" + r.Host) to robustly extract the hostname (handles IPv6).
-func hostAuthorizationMiddleware(allowedHosts []string, badHostHandler http.Handler) func(next http.Handler) http.Handler {
-	// Copy for safety; also build a map for O(1) lookups with case-insensitive keys.
-	allowed := make(map[string]struct{}, len(allowedHosts))
-	for _, h := range allowedHosts {
-		allowed[strings.ToLower(h)] = struct{}{}
-	}
-	wildcard := slices.Contains(allowedHosts, "*")
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if wildcard { // wildcard semantics: allow all
-				next.ServeHTTP(w, r)
-				return
-			}
-			// Extract hostname from the Host header using url.Parse; ignore any port.
-			hostHeader := r.Host
-			if hostHeader == "" {
-				badHostHandler.ServeHTTP(w, r)
-				return
-			}
-			if u, err := url.Parse("http://" + hostHeader); err == nil {
-				hostname := u.Hostname()
-				if _, ok := allowed[strings.ToLower(hostname)]; ok {
-					next.ServeHTTP(w, r)
-					return
-				}
-			}
-			badHostHandler.ServeHTTP(w, r)
-		})
-	}
-}
 
-// requestLogger returns a middleware that derives a per-request logger
-// from the server's base logger and the request ID stamped by
-// chimw.RequestID, then attaches that logger (and the id) to the
-// request context. Handlers that call logctx.From(r.Context()) get
-// the enriched logger for free.
-//
-// The middleware emits one structured slog line per request with
-// method, path, status, bytes, duration, and request_id — the same
-// fields most production HTTP servers log. This replaces the
-// ad-hoc fmt.Println-style logging that handlers used to do
-// individually and is the single best signal for "is the server
-// actually serving" under load.
-//
-// We use chi's canonical NewWrapResponseWriter instead of a hand-rolled
-// recorder. Hand-rolled wrappers that embed http.ResponseWriter and
-// override Write() reliably confuse the huma SSE library, which needs
-// to find an http.Flusher (and an http.Unwrap chain) on the writer so
-// that the SSE stream can be flushed after each event. chi's wrapper
-// implements the Unwrap() http.ResponseWriter method, so the lookup
-// walks the chain down to the real net/http response writer.
-func requestLogger(base *slog.Logger) func(next http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			start := time.Now()
-			ww := chimw.NewWrapResponseWriter(w, r.ProtoMajor)
-
-			reqID := chimw.GetReqID(r.Context())
-			reqLogger := base.With(slog.String("request_id", reqID))
-
-			// Replace the request context so downstream handlers
-			// (humachi, file server, SSE handler) see the enriched
-			// logger via logctx.From.
-			r = r.WithContext(logctx.WithLoggerAndRequestID(r.Context(), reqLogger, reqID))
-
-			next.ServeHTTP(ww, r)
-
-			dur := time.Since(start)
-			level := slog.LevelInfo
-			status := ww.Status()
-			if status >= 500 {
-				level = slog.LevelError
-			} else if status >= 400 {
-				level = slog.LevelWarn
-			}
-			reqLogger.LogAttrs(r.Context(), level, "http",
-				slog.String("method", r.Method),
-				slog.String("path", r.URL.Path),
-				slog.Int("status", status),
-				slog.Int("bytes", ww.BytesWritten()),
-				slog.Duration("duration", dur),
-				slog.String("remote", r.RemoteAddr),
-			)
-		})
-	}
-}
-
-// sseMiddleware creates middleware that prevents proxy buffering for SSE endpoints
-func sseMiddleware(ctx huma.Context, next func(huma.Context)) {
-	// Disable proxy buffering for SSE endpoints
-	ctx.SetHeader("Cache-Control", "no-cache, no-store, must-revalidate")
-	ctx.SetHeader("Pragma", "no-cache")
-	ctx.SetHeader("Expires", "0")
-	ctx.SetHeader("X-Accel-Buffering", "no") // nginx
-	ctx.SetHeader("X-Proxy-Buffering", "no") // generic proxy
-	ctx.SetHeader("Connection", "keep-alive")
-
-	next(ctx)
-}
 
 // registerRoutes sets up all API endpoints
 func (s *Server) registerRoutes() {
@@ -473,51 +271,6 @@ func (s *Server) registerRoutes() {
 
 	huma.Post(s.api, "/upload", s.uploadFiles, func(o *huma.Operation) {
 		o.Description = "Upload files to the specified upload path."
-	})
-
-	// DELETE /messages endpoint — clear the conversation history.
-	huma.Delete(s.api, "/messages", s.clearMessages, func(o *huma.Operation) {
-		o.Description = "Clears the conversation history with the agent."
-	})
-
-	// GET /messages/count endpoint.
-	huma.Get(s.api, "/messages/count", s.getMessagesCount, func(o *huma.Operation) {
-		o.Description = "Returns the number of messages in the conversation history."
-	})
-
-	// GET /info endpoint — agent version/type/feature flags.
-	huma.Get(s.api, "/info", s.getInfo, func(o *huma.Operation) {
-		o.Description = "Returns version, agent type, and feature flags for the running server."
-	})
-
-	// GET /config endpoint.
-	huma.Get(s.api, "/config", s.getConfig, func(o *huma.Operation) {
-		o.Description = "Returns the effective server configuration."
-	})
-
-	// GET /logs endpoint.
-	huma.Get(s.api, "/logs", s.getLogs, func(o *huma.Operation) {
-		o.Description = "Returns server log lines."
-	})
-
-	// GET /rate-limit endpoint.
-	huma.Get(s.api, "/rate-limit", s.getRateLimit, func(o *huma.Operation) {
-		o.Description = "Returns rate-limit status."
-	})
-
-	// GET /health endpoint.
-	huma.Get(s.api, "/health", s.getHealth, func(o *huma.Operation) {
-		o.Description = "Returns server health."
-	})
-
-	// GET /version endpoint.
-	huma.Get(s.api, "/version", s.getVersion, func(o *huma.Operation) {
-		o.Description = "Returns the server version."
-	})
-
-	// GET /ready endpoint.
-	huma.Get(s.api, "/ready", s.getReady, func(o *huma.Operation) {
-		o.Description = "Returns whether the server is ready to serve requests."
 	})
 
 	// GET /events endpoint
@@ -550,188 +303,6 @@ func (s *Server) registerRoutes() {
 
 	// Serve static files for the chat interface under /chat
 	s.registerStaticFileRoutes()
-}
-
-// getStatus handles GET /status
-func (s *Server) getStatus(ctx context.Context, input *struct{}) (*StatusResponse, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	status := s.conversation.Status()
-	agentStatus, err := convertStatus(status)
-	if err != nil {
-		return nil, xerrors.Errorf("failed to convert status: %w", err)
-	}
-
-	resp := &StatusResponse{}
-	resp.Body.Status = agentStatus
-	resp.Body.AgentType = s.agentType
-	resp.Body.Transport = s.transport
-
-	return resp, nil
-}
-
-// getMessages handles GET /messages
-func (s *Server) getMessages(ctx context.Context, input *struct{}) (*MessagesResponse, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	resp := &MessagesResponse{}
-	resp.Body.Messages = make([]Message, len(s.conversation.Messages()))
-	for i, msg := range s.conversation.Messages() {
-		resp.Body.Messages[i] = Message{
-			Id:      msg.Id,
-			Role:    msg.Role,
-			Content: msg.Message,
-			Time:    msg.Time,
-		}
-	}
-
-	return resp, nil
-}
-
-// createMessage handles POST /message
-func (s *Server) createMessage(ctx context.Context, input *MessageRequest) (*MessageResponse, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	switch input.Body.Type {
-	case MessageTypeUser:
-		if err := s.conversation.Send(FormatMessage(s.agentType, input.Body.Content)...); err != nil {
-			return nil, xerrors.Errorf("failed to send message: %w", err)
-		}
-	case MessageTypeRaw:
-		if _, err := s.agentio.Write([]byte(input.Body.Content)); err != nil {
-			return nil, xerrors.Errorf("failed to send message: %w", err)
-		}
-	}
-
-	resp := &MessageResponse{}
-	resp.Body.Ok = true
-
-	return resp, nil
-}
-
-// uploadFiles handles POST /upload
-func (s *Server) uploadFiles(ctx context.Context, input *struct {
-	RawBody huma.MultipartFormFiles[UploadRequest]
-},
-) (*UploadResponse, error) {
-	formData := input.RawBody.Data()
-
-	file := formData.File.File
-
-	// Limit file size to 10MB
-	const maxFileSize = 10 << 20 // 10MB
-	buf, err := io.ReadAll(io.LimitReader(file, maxFileSize+1))
-	if err != nil {
-		return nil, xerrors.Errorf("failed to upload file: %w", err)
-	}
-	if len(buf) > maxFileSize {
-		return nil, huma.Error400BadRequest("file size exceeds 10MB limit")
-	}
-
-	// Calculate checksum of the uploaded file to create unique subdirectory
-	hash := sha256.Sum256(buf)
-	checksum := hex.EncodeToString(hash[:8]) // Use first 8 bytes (16 hex chars)
-
-	// Create checksum-based subdirectory in tempDir
-	uploadDir := filepath.Join(s.tempDir, checksum)
-	err = os.MkdirAll(uploadDir, 0o755)
-	if err != nil {
-		return nil, xerrors.Errorf("failed to create upload directory: %w", err)
-	}
-
-	// Save individual file with original filename (extract just the base filename for security)
-	filename := filepath.Base(formData.File.Filename)
-
-	outPath := filepath.Join(uploadDir, filename)
-	err = os.WriteFile(outPath, buf, 0o644)
-	if err != nil {
-		return nil, xerrors.Errorf("failed to write file: %w", err)
-	}
-
-	resp := &UploadResponse{}
-	resp.Body.Ok = true
-	resp.Body.FilePath = outPath
-	return resp, nil
-}
-
-// subscribeEvents is an SSE endpoint that sends events to the client
-func (s *Server) subscribeEvents(ctx context.Context, input *struct{}, send sse.Sender) {
-	subscriberId, ch, stateEvents := s.emitter.Subscribe()
-	defer s.emitter.Unsubscribe(subscriberId)
-
-	s.logger.Info("New subscriber", "subscriberId", subscriberId)
-	for _, event := range stateEvents {
-		if event.Type == EventTypeScreenUpdate {
-			continue
-		}
-		if err := send.Data(event.Payload); err != nil {
-			s.logger.Error("Failed to send event", "subscriberId", subscriberId, "error", err)
-			return
-		}
-	}
-
-	for {
-		select {
-		case event, ok := <-ch:
-			if !ok {
-				s.logger.Info("Channel closed", "subscriberId", subscriberId)
-				return
-			}
-			if event.Type == EventTypeScreenUpdate {
-				continue
-			}
-			if err := send.Data(event.Payload); err != nil {
-				s.logger.Error("Failed to send event", "subscriberId", subscriberId, "error", err)
-				return
-			}
-		case <-s.shutdownCtx.Done():
-			s.logger.Info("Server stop initiated, unsubscribing.", "subscriberId", subscriberId)
-			return
-		case <-ctx.Done():
-			s.logger.Info("Context done", "subscriberId", subscriberId)
-			return
-		}
-	}
-}
-
-func (s *Server) subscribeScreen(ctx context.Context, input *struct{}, send sse.Sender) {
-	subscriberId, ch, stateEvents := s.emitter.Subscribe()
-	defer s.emitter.Unsubscribe(subscriberId)
-	s.logger.Info("New screen subscriber", "subscriberId", subscriberId)
-	for _, event := range stateEvents {
-		if event.Type != EventTypeScreenUpdate {
-			continue
-		}
-		if err := send.Data(event.Payload); err != nil {
-			s.logger.Error("Failed to send screen event", "subscriberId", subscriberId, "error", err)
-			return
-		}
-	}
-	for {
-		select {
-		case event, ok := <-ch:
-			if !ok {
-				s.logger.Info("Screen channel closed", "subscriberId", subscriberId)
-				return
-			}
-			if event.Type != EventTypeScreenUpdate {
-				continue
-			}
-			if err := send.Data(event.Payload); err != nil {
-				s.logger.Error("Failed to send screen event", "subscriberId", subscriberId, "error", err)
-				return
-			}
-		case <-s.shutdownCtx.Done():
-			s.logger.Info("Server stop initiated, unsubscribing.", "subscriberId", subscriberId)
-			return
-		case <-ctx.Done():
-			s.logger.Info("Screen context done", "subscriberId", subscriberId)
-			return
-		}
-	}
 }
 
 // Start starts the HTTP server
@@ -787,14 +358,4 @@ func (s *Server) registerStaticFileRoutes() {
 	// Mount the file server at /chat
 	s.router.Handle("/chat", http.StripPrefix("/chat", chatHandler))
 	s.router.Handle("/chat/*", http.StripPrefix("/chat", chatHandler))
-}
-
-func (s *Server) redirectToChat(w http.ResponseWriter, r *http.Request) {
-	rdir, err := url.JoinPath(s.chatBasePath, "embed")
-	if err != nil {
-		s.logger.Error("Failed to construct redirect URL", "error", err)
-		http.Error(w, "Failed to redirect", http.StatusInternalServerError)
-		return
-	}
-	http.Redirect(w, r, rdir, http.StatusTemporaryRedirect)
 }

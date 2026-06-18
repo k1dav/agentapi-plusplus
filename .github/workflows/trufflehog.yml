@@ -11,9 +11,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           fetch-depth: 0
-      # Canonical TruffleHog action (the previous `trufflehog/actions/setup`
-      # reference pointed at a repo that does not exist).
-      - name: TruffleHog secret scan
-        uses: trufflesecurity/trufflehog@main
-        with:
-          extra_args: --only-verified
+      - uses: trufflehog/actions/setup@3fc0c2a225a9d249aea9b97a1c40c40a5ff7e0c0 # pinned from @main
+      - run: trufflehog github --only-verified --no-update
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
