@@ -24,3 +24,8 @@ Post **Wave H2** (#531): `main` is superset of `sync/upstream-v0.12.2` + `comple
 go build ./...
 go test ./...
 ```
+
+## Audit log (2026-06-18)
+
+- Script: `scripts/branch-prune-audit.ps1`
+- Result: **0 delete candidates** — remote has `main` only (post H2 / #535)
