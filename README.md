@@ -14,6 +14,10 @@ Progress: ████████░░ 80%
 
 # AgentAPI++ (KooshaPari Fork)
 
+> **FOLDED 2026-06-24** — This fork has been folded into the [Phenotype substrate](https://github.com/KooshaPari/substrate) workspace as [`crates/engine-agentapi`](https://github.com/KooshaPari/substrate/tree/main/crates/engine-agentapi). The Go HTTP gateway (this binary) is now consumed as an external subprocess by the Rust engine adapter. Source preservation only — do not file new issues or PRs here. See ADR-ECO-007 and `plans/2026-06-22-phenotype-ecosystem-router-architecture-v1.md` for the fold rationale.
+>
+> **Migration:** Replace any `KooshaPari/agentapi-plusplus` build dependency with substrate's `engine-agentapi` crate. The 5-endpoint HTTP surface (`/status`, `/messages`, `/message`, `/events`, `/upload`) is preserved verbatim by the Rust client.
+
 ## State
 
 Progress: `[████████▌░] 85%` — HTTP gateway for 11 agent CLIs (forked from anthropics/agentapi).
