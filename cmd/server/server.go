@@ -205,6 +205,11 @@ func runServer(ctx context.Context, logger *slog.Logger, argsToPass []string) er
 			LoadState: loadState,
 			SaveState: saveState,
 		},
+		APIKey:            viper.GetString(FlagAPIKey),
+		ReadHeaderTimeout: viper.GetDuration(FlagReadHeaderTimeout),
+		ReadTimeout:       viper.GetDuration(FlagReadTimeout),
+		WriteTimeout:      viper.GetDuration(FlagWriteTimeout),
+		IdleTimeout:       viper.GetDuration(FlagIdleTimeout),
 	})
 
 	if err != nil {
@@ -375,21 +380,26 @@ type flagSpec struct {
 }
 
 const (
-	FlagType            = "type"
-	FlagPort            = "port"
-	FlagPrintOpenAPI    = "print-openapi"
-	FlagChatBasePath    = "chat-base-path"
-	FlagTermWidth       = "term-width"
-	FlagTermHeight      = "term-height"
-	FlagAllowedHosts    = "allowed-hosts"
-	FlagAllowedOrigins  = "allowed-origins"
-	FlagExit            = "exit"
-	FlagInitialPrompt   = "initial-prompt"
-	FlagStateFile       = "state-file"
-	FlagLoadState       = "load-state"
-	FlagSaveState       = "save-state"
-	FlagPidFile         = "pid-file"
-	FlagExperimentalACP = "experimental-acp"
+	FlagType              = "type"
+	FlagPort              = "port"
+	FlagPrintOpenAPI      = "print-openapi"
+	FlagChatBasePath      = "chat-base-path"
+	FlagTermWidth         = "term-width"
+	FlagTermHeight        = "term-height"
+	FlagAllowedHosts      = "allowed-hosts"
+	FlagAllowedOrigins    = "allowed-origins"
+	FlagExit              = "exit"
+	FlagInitialPrompt     = "initial-prompt"
+	FlagStateFile         = "state-file"
+	FlagLoadState         = "load-state"
+	FlagSaveState         = "save-state"
+	FlagPidFile           = "pid-file"
+	FlagExperimentalACP   = "experimental-acp"
+	FlagAPIKey            = "api-key"
+	FlagReadHeaderTimeout = "read-header-timeout"
+	FlagReadTimeout       = "read-timeout"
+	FlagWriteTimeout      = "write-timeout"
+	FlagIdleTimeout       = "idle-timeout"
 )
 
 func CreateServerCmd() *cobra.Command {
@@ -436,6 +446,17 @@ func CreateServerCmd() *cobra.Command {
 		{FlagSaveState, "", false, "Save state to state-file on shutdown (defaults to true when state-file is set)", "bool"},
 		{FlagPidFile, "", "", "Path to file where the server process ID will be written for shutdown scripts", "string"},
 		{FlagExperimentalACP, "", false, "Use experimental ACP transport instead of PTY", "bool"},
+		// APIKey enables bearer-token auth on mutating routes. When unset,
+		// the trusted-localhost default is preserved (host allowlist is the
+		// only gate) and a warning is logged at startup. The env var
+		// AGENTAPI_API_KEY is the recommended way to set this in production.
+		{FlagAPIKey, "", "", "API key required on mutating routes (POST /message, POST /upload, DELETE /messages) via `Authorization: Bearer <key>`. Empty = disabled (trusted-localhost only). Env: AGENTAPI_API_KEY.", "string"},
+		// HTTP I/O timeout flags. Defaults are set in lib/httpapi when the
+		// value is the zero duration, so leaving these unset is safe.
+		{FlagReadHeaderTimeout, "", time.Duration(0), "Maximum duration for reading request headers (slowloris cap). 0 = use default (10s)", "duration"},
+		{FlagReadTimeout, "", time.Duration(0), "Maximum duration for reading the full request (headers + body). 0 = use default (30s)", "duration"},
+		{FlagWriteTimeout, "", time.Duration(0), "Maximum duration for writing the response. 0 = use default (60s)", "duration"},
+		{FlagIdleTimeout, "", time.Duration(0), "Maximum idle time on a keep-alive connection between requests. 0 = use default (120s)", "duration"},
 	}
 
 	for _, spec := range flagSpecs {
@@ -450,6 +471,8 @@ func CreateServerCmd() *cobra.Command {
 			serverCmd.Flags().Uint16P(spec.name, spec.shorthand, spec.defaultValue.(uint16), spec.usage)
 		case "stringSlice":
 			serverCmd.Flags().StringSliceP(spec.name, spec.shorthand, spec.defaultValue.([]string), spec.usage)
+		case "duration":
+			serverCmd.Flags().DurationP(spec.name, spec.shorthand, spec.defaultValue.(time.Duration), spec.usage)
 		default:
 			panic(fmt.Sprintf("unknown flag type: %s", spec.flagType))
 		}

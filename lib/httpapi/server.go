@@ -20,6 +20,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/coder/agentapi/internal/middleware"
 	"github.com/coder/agentapi/internal/version"
 	"github.com/coder/agentapi/lib/logctx"
 	mf "github.com/coder/agentapi/lib/msgfmt"
@@ -37,23 +38,28 @@ import (
 
 // Server represents the HTTP server
 type Server struct {
-	router       chi.Router
-	api          huma.API
-	port         int
-	srv          *http.Server
-	mu           sync.RWMutex
-	stopOnce     sync.Once
-	logger       *slog.Logger
-	conversation st.Conversation
-	agentio      st.AgentIO
-	agentType    mf.AgentType
-	emitter      *EventEmitter
-	chatBasePath string
-	tempDir      string
-	clock        quartz.Clock
-	shutdownCtx  context.Context
-	shutdown     context.CancelFunc
-	transport    Transport
+	router            chi.Router
+	api               huma.API
+	port              int
+	srv               *http.Server
+	mu                sync.RWMutex
+	stopOnce          sync.Once
+	logger            *slog.Logger
+	conversation      st.Conversation
+	agentio           st.AgentIO
+	agentType         mf.AgentType
+	emitter           *EventEmitter
+	chatBasePath      string
+	tempDir           string
+	clock             quartz.Clock
+	shutdownCtx       context.Context
+	shutdown          context.CancelFunc
+	transport         Transport
+	apiKey            string
+	readHeaderTimeout time.Duration
+	readTimeout       time.Duration
+	writeTimeout      time.Duration
+	idleTimeout       time.Duration
 }
 
 func (s *Server) NormalizeSchema(schema any) any {
@@ -102,6 +108,18 @@ func (s *Server) GetOpenAPI() string {
 // because the action of taking a snapshot takes time too.
 const snapshotInterval = 25 * time.Millisecond
 
+// Default I/O timeouts for the embedded http.Server. Slowloris-class
+// attacks are blocked by setting ReadHeaderTimeout aggressively; the
+// other three caps keep streaming responses (SSE) from holding a
+// connection open indefinitely. Values are conservative and overridable
+// via ServerConfig.
+const (
+	DefaultReadHeaderTimeout = 10 * time.Second
+	DefaultReadTimeout       = 30 * time.Second
+	DefaultWriteTimeout      = 60 * time.Second
+	DefaultIdleTimeout       = 120 * time.Second
+)
+
 type ServerConfig struct {
 	AgentType              mf.AgentType
 	AgentIO                st.AgentIO
@@ -113,6 +131,25 @@ type ServerConfig struct {
 	InitialPrompt          string
 	Clock                  quartz.Clock
 	StatePersistenceConfig st.StatePersistenceConfig
+	// APIKey, when non-empty, requires `Authorization: Bearer <APIKey>`
+	// on mutating routes (POST /message, POST /upload, DELETE /messages).
+	// When empty the trusted-localhost default is preserved; a warning
+	// is logged at startup so operators notice the gap.
+	APIKey string
+	// ReadHeaderTimeout caps the slowloris window for header reads.
+	// Zero means use DefaultReadHeaderTimeout.
+	ReadHeaderTimeout time.Duration
+	// ReadTimeout caps total request body read time (after headers).
+	// Zero means use DefaultReadTimeout.
+	ReadTimeout time.Duration
+	// WriteTimeout caps total response write time. Note: this is
+	// disabled for SSE endpoints which stream indefinitely — huma
+	// sets the per-stream deadline via context on those.
+	// Zero means use DefaultWriteTimeout.
+	WriteTimeout time.Duration
+	// IdleTimeout caps the keep-alive idle window between requests.
+	// Zero means use DefaultIdleTimeout.
+	IdleTimeout time.Duration
 }
 
 // Validate allowed hosts don't contain whitespace, commas, schemes, or ports.
@@ -221,6 +258,12 @@ func NewServer(ctx context.Context, config ServerConfig) (*Server, error) {
 	logger.Info(fmt.Sprintf("Allowed hosts: %s", strings.Join(allowedHosts, ", ")))
 	logger.Info(fmt.Sprintf("Allowed origins: %s", strings.Join(allowedOrigins, ", ")))
 
+	if config.APIKey == "" {
+		logger.Warn("API key authentication is DISABLED — mutating routes (/message, /upload, DELETE /messages) are open to any caller passing the host-allowlist. Set --api-key or AGENTAPI_API_KEY to enforce.")
+	} else {
+		logger.Info("API key authentication is ENABLED — mutating routes require Authorization: Bearer <key>.")
+	}
+
 	// Enforce allowed hosts in a custom middleware that ignores the port during matching.
 	badHostHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid host header. Allowed hosts: "+strings.Join(allowedHosts, ", "), http.StatusBadRequest)
@@ -298,20 +341,25 @@ func NewServer(ctx context.Context, config ServerConfig) (*Server, error) {
 	shutdownCtx, shutdownCancel := context.WithCancel(context.Background())
 
 	s := &Server{
-		router:       router,
-		api:          api,
-		port:         config.Port,
-		conversation: conversation,
-		logger:       logger,
-		agentio:      config.AgentIO,
-		agentType:    config.AgentType,
-		emitter:      emitter,
-		chatBasePath: strings.TrimSuffix(config.ChatBasePath, "/"),
-		tempDir:      tempDir,
-		clock:        config.Clock,
-		shutdownCtx:  shutdownCtx,
-		shutdown:     shutdownCancel,
-		transport:    config.Transport,
+		router:            router,
+		api:               api,
+		port:              config.Port,
+		conversation:      conversation,
+		logger:            logger,
+		agentio:           config.AgentIO,
+		agentType:         config.AgentType,
+		emitter:           emitter,
+		chatBasePath:      strings.TrimSuffix(config.ChatBasePath, "/"),
+		tempDir:           tempDir,
+		clock:             config.Clock,
+		shutdownCtx:       shutdownCtx,
+		shutdown:          shutdownCancel,
+		transport:         config.Transport,
+		apiKey:            config.APIKey,
+		readHeaderTimeout: config.ReadHeaderTimeout,
+		readTimeout:       config.ReadTimeout,
+		writeTimeout:      config.WriteTimeout,
+		idleTimeout:       config.IdleTimeout,
 	}
 
 	// Register API routes
@@ -384,6 +432,11 @@ func sseMiddleware(ctx huma.Context, next func(huma.Context)) {
 
 // registerRoutes sets up all API endpoints
 func (s *Server) registerRoutes() {
+	// Pre-compute the auth middleware once so all mutating routes
+	// share the same closure (and the same pre-marshaled challenge
+	// body). The middleware is a no-op when no API key is configured.
+	authMW := middleware.HumaAPIKeyAuth(s.apiKey)
+
 	// GET /status endpoint
 	huma.Get(s.api, "/status", s.getStatus, func(o *huma.Operation) {
 		o.Description = "Returns the current status of the agent."
@@ -397,15 +450,18 @@ func (s *Server) registerRoutes() {
 	// POST /message endpoint
 	huma.Post(s.api, "/message", s.createMessage, func(o *huma.Operation) {
 		o.Description = "Send a message to the agent. For messages of type 'user', the agent's status must be 'stable' for the operation to complete successfully. Otherwise, this endpoint will return an error."
+		o.Middlewares = []func(huma.Context, func(huma.Context)){authMW}
 	})
 
 	huma.Post(s.api, "/upload", s.uploadFiles, func(o *huma.Operation) {
 		o.Description = "Upload files to the specified upload path."
+		o.Middlewares = []func(huma.Context, func(huma.Context)){authMW}
 	})
 
 	// DELETE /messages endpoint — clear the conversation history.
 	huma.Delete(s.api, "/messages", s.clearMessages, func(o *huma.Operation) {
 		o.Description = "Clears the conversation history with the agent."
+		o.Middlewares = []func(huma.Context, func(huma.Context)){authMW}
 	})
 
 	// GET /messages/count endpoint.
@@ -665,12 +721,66 @@ func (s *Server) subscribeScreen(ctx context.Context, input *struct{}, send sse.
 // Start starts the HTTP server
 func (s *Server) Start() error {
 	addr := fmt.Sprintf(":%d", s.port)
+	// I/O timeouts are mandatory — a server without them is exposed
+	// to slowloris and to keep-alive connection accumulation. Each
+	// cap has a sensible default but is overridable via ServerConfig
+	// so operators can tune for their network and SSE workloads.
+	readHeaderTimeout := s.configReadHeaderTimeout()
+	readTimeout := s.configReadTimeout()
+	writeTimeout := s.configWriteTimeout()
+	idleTimeout := s.configIdleTimeout()
 	s.srv = &http.Server{
-		Addr:    addr,
-		Handler: s.router,
+		Addr:              addr,
+		Handler:           s.router,
+		ReadHeaderTimeout: readHeaderTimeout,
+		ReadTimeout:       readTimeout,
+		WriteTimeout:      writeTimeout,
+		IdleTimeout:       idleTimeout,
 	}
+	s.logger.Info("HTTP server timeouts configured",
+		"readHeaderTimeout", readHeaderTimeout,
+		"readTimeout", readTimeout,
+		"writeTimeout", writeTimeout,
+		"idleTimeout", idleTimeout,
+	)
 
 	return s.srv.ListenAndServe()
+}
+
+// configReadHeaderTimeout returns the effective ReadHeaderTimeout,
+// falling back to DefaultReadHeaderTimeout when unset/zero.
+func (s *Server) configReadHeaderTimeout() time.Duration {
+	if v := s.readHeaderTimeout; v > 0 {
+		return v
+	}
+	return DefaultReadHeaderTimeout
+}
+
+// configReadTimeout returns the effective ReadTimeout, falling back
+// to DefaultReadTimeout when unset/zero.
+func (s *Server) configReadTimeout() time.Duration {
+	if v := s.readTimeout; v > 0 {
+		return v
+	}
+	return DefaultReadTimeout
+}
+
+// configWriteTimeout returns the effective WriteTimeout, falling back
+// to DefaultWriteTimeout when unset/zero.
+func (s *Server) configWriteTimeout() time.Duration {
+	if v := s.writeTimeout; v > 0 {
+		return v
+	}
+	return DefaultWriteTimeout
+}
+
+// configIdleTimeout returns the effective IdleTimeout, falling back
+// to DefaultIdleTimeout when unset/zero.
+func (s *Server) configIdleTimeout() time.Duration {
+	if v := s.idleTimeout; v > 0 {
+		return v
+	}
+	return DefaultIdleTimeout
 }
 
 // Stop gracefully stops the HTTP server. It is safe to call multiple times.

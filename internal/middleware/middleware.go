@@ -36,11 +36,15 @@ type CORSOptions struct {
 // Parameters:
 //   - router: The chi router to apply middleware to
 //   - options: CORS configuration options
-func ApplyCustomCORS(router *chi.Mux, options CORSOptions) {
+//
+// Returns:
+//   - error: An error if the underlying middleware stack setup fails.
+//     Surface setup errors so misconfiguration fails loudly at startup
+//     rather than producing a runtime gap that's only visible later.
+func ApplyCustomCORS(router *chi.Mux, options CORSOptions) error {
 	// The phenotype-go-kit middleware stack already includes CORS handling
-	// This function provides a hook for future customization
-	//nolint:errcheck // local middleware stack setup is non-fatal in this helper
-	ApplyDefaultStack(router)
+	// This function provides a hook for future customization.
+	return ApplyDefaultStack(router)
 }
 
 // HealthCheckRoute registers a health check endpoint using phenotype-go-kit's handler.

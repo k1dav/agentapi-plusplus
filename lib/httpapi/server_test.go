@@ -990,3 +990,117 @@ func TestServer_Stop_Idempotency(t *testing.T) {
 	err = srv.Stop(stopCtx3)
 	require.NoError(t, err)
 }
+
+// startAuthTestServer is a helper that starts a server in a goroutine and
+// returns its base URL plus a teardown function. Used by the auth-gating tests
+// below to avoid duplicating the boilerplate.
+func startAuthTestServer(t *testing.T, apiKey string) (string, func()) {
+	t.Helper()
+	ctx := logctx.WithLogger(context.Background(), slog.New(slog.NewTextHandler(os.Stdout, nil)))
+
+	srv, err := httpapi.NewServer(ctx, httpapi.ServerConfig{
+		AgentType:      msgfmt.AgentTypeClaude,
+		AgentIO:        nil,
+		Port:           0,
+		ChatBasePath:   "/chat",
+		AllowedHosts:   []string{"*"},
+		AllowedOrigins: []string{"*"},
+		APIKey:         apiKey,
+	})
+	require.NoError(t, err)
+
+	ts := httptest.NewServer(srv.Handler())
+	teardown := func() {
+		ts.Close()
+		stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = srv.Stop(stopCtx)
+	}
+	return ts.URL, teardown
+}
+
+func TestServer_Auth_RejectsWriteWithoutAPIKey(t *testing.T) {
+	t.Parallel()
+	base, teardown := startAuthTestServer(t, "secret-key-xyz")
+	defer teardown()
+
+	// POST /message without any auth header must be 401.
+	req, err := http.NewRequest(http.MethodPost, base+"/message", strings.NewReader("hello"))
+	require.NoError(t, err)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+}
+
+func TestServer_Auth_RejectsWriteWithWrongAPIKey(t *testing.T) {
+	t.Parallel()
+	base, teardown := startAuthTestServer(t, "secret-key-xyz")
+	defer teardown()
+
+	req, err := http.NewRequest(http.MethodPost, base+"/message", strings.NewReader("hello"))
+	require.NoError(t, err)
+	req.Header.Set("Authorization", "Bearer wrong-key")
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+}
+
+func TestServer_Auth_AcceptsWriteWithCorrectAPIKey(t *testing.T) {
+	t.Parallel()
+	base, teardown := startAuthTestServer(t, "secret-key-xyz")
+	defer teardown()
+
+	req, err := http.NewRequest(http.MethodPost, base+"/message", strings.NewReader("hello"))
+	require.NoError(t, err)
+	req.Header.Set("Authorization", "Bearer secret-key-xyz")
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	// We don't have an AgentIO wired, so the request will be rejected by the
+	// handler chain, but it must NOT be a 401 — the auth layer passed.
+	assert.NotEqual(t, http.StatusUnauthorized, resp.StatusCode)
+}
+
+func TestServer_Auth_RejectsWriteWithMalformedAuthHeader(t *testing.T) {
+	t.Parallel()
+	base, teardown := startAuthTestServer(t, "secret-key-xyz")
+	defer teardown()
+
+	// Missing "Bearer " prefix.
+	req, err := http.NewRequest(http.MethodPost, base+"/message", strings.NewReader("hello"))
+	require.NoError(t, err)
+	req.Header.Set("Authorization", "secret-key-xyz")
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+}
+
+func TestServer_Auth_GETHealthIsUnauthenticated(t *testing.T) {
+	t.Parallel()
+	base, teardown := startAuthTestServer(t, "secret-key-xyz")
+	defer teardown()
+
+	// GET /health must be reachable without any auth.
+	resp, err := http.Get(base + "/health")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+func TestServer_Auth_DisabledWhenAPIKeyEmpty(t *testing.T) {
+	t.Parallel()
+	// When APIKey is empty, writes should pass through the auth middleware
+	// (the server logs a startup warning, but does not enforce).
+	base, teardown := startAuthTestServer(t, "")
+	defer teardown()
+
+	req, err := http.NewRequest(http.MethodPost, base+"/message", strings.NewReader("hello"))
+	require.NoError(t, err)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.NotEqual(t, http.StatusUnauthorized, resp.StatusCode)
+}

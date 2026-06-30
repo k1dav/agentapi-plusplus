@@ -21,6 +21,18 @@ type Server struct {
 	server       *http.Server
 }
 
+// Default I/O timeouts for the management HTTP server. Slowloris-class
+// attacks are blocked by setting ReadHeaderTimeout aggressively; the
+// other three caps keep the server from accumulating stale
+// keep-alive connections. Mirrors the defaults in lib/httpapi so the
+// two server surfaces behave consistently.
+const (
+	defaultReadHeaderTimeout = 10 * time.Second
+	defaultReadTimeout       = 30 * time.Second
+	defaultWriteTimeout      = 60 * time.Second
+	defaultIdleTimeout       = 120 * time.Second
+)
+
 // New creates a new agentapi server
 func New(port int, router *routing.AgentBifrost) *Server {
 	s := &Server{
@@ -57,8 +69,12 @@ func (s *Server) Start() error {
 	r.HandleFunc("/proxy/*", s.proxy)
 
 	s.server = &http.Server{
-		Addr:    fmt.Sprintf(":%d", s.port),
-		Handler: r,
+		Addr:              fmt.Sprintf(":%d", s.port),
+		Handler:           r,
+		ReadHeaderTimeout: defaultReadHeaderTimeout,
+		ReadTimeout:       defaultReadTimeout,
+		WriteTimeout:      defaultWriteTimeout,
+		IdleTimeout:       defaultIdleTimeout,
 	}
 
 	return s.server.ListenAndServe()
