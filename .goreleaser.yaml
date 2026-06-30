@@ -1,0 +1,46 @@
+# goreleaser config for agentapi-plusplus
+# Fork of coder/agentapi; module path unchanged (github.com/coder/agentapi),
+# so per the anti-collision rule the binary installs as "agentapi-dev".
+version: 2
+
+before:
+  hooks:
+    - go mod download
+    # Generate embedded chat assets so the bundled UI ships in the release binary.
+    # Requires bun + chat deps (provided by the workflow). Best-effort: the binary
+    # still compiles without it thanks to the committed chat/marker embed stub.
+    - sh -c 'make gen || echo "make gen skipped (chat assets not bundled)"'
+
+builds:
+  - id: agentapi-dev
+    binary: agentapi-dev
+    main: .
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w -X github.com/coder/agentapi/internal/version.Version={{.Version}}
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+
+archives:
+  - id: agentapi-dev
+    ids: [agentapi-dev]
+    name_template: >-
+      agentapi-dev_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+
+checksum:
+  name_template: "checksums.txt"
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-snapshot"
+
+release:
+  draft: false
+  prerelease: auto
+
+changelog:
+  use: github
+  sort: asc
