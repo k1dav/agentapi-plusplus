@@ -128,8 +128,19 @@ func WriteRawInputOverHTTP(ctx context.Context, url string, msg string) error {
 	return nil
 }
 
+// checkACPModeHTTPTimeout bounds how long the attach CLI will wait for the
+// server's /status endpoint before giving up. Without it a hung server
+// would block the CLI indefinitely, leaking the goroutine and the TTY
+// (audit finding L26).
+const checkACPModeHTTPTimeout = 5 * time.Second
+
 func checkACPMode(remoteURL string) (bool, error) {
-	resp, err := http.Get(remoteURL + "/status")
+	client := &http.Client{Timeout: checkACPModeHTTPTimeout}
+	req, err := http.NewRequest(http.MethodGet, remoteURL+"/status", nil)
+	if err != nil {
+		return false, xerrors.Errorf("failed to build status request: %w", err)
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return false, xerrors.Errorf("failed to check server status: %w", err)
 	}

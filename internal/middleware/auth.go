@@ -3,6 +3,7 @@ package middleware
 import (
 	"crypto/subtle"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -52,11 +53,23 @@ func APIKeyAuth(expectedKey string) func(next http.Handler) http.Handler {
 			// Header must be of the form "Bearer <token>".
 			const prefix = "Bearer "
 			if len(authz) <= len(prefix) || authz[:len(prefix)] != prefix {
+				slog.Warn("auth rejected",
+					slog.String("reason", "missing_or_malformed_authorization"),
+					slog.String("method", r.Method),
+					slog.String("path", r.URL.Path),
+					slog.String("remote", r.RemoteAddr),
+				)
 				writeUnauthorized(w, challengeJSON)
 				return
 			}
 			provided := []byte(authz[len(prefix):])
 			if !constantTimeEqual(provided, expected, expectedLen) {
+				slog.Warn("auth rejected",
+					slog.String("reason", "invalid_api_key"),
+					slog.String("method", r.Method),
+					slog.String("path", r.URL.Path),
+					slog.String("remote", r.RemoteAddr),
+				)
 				writeUnauthorized(w, challengeJSON)
 				return
 			}
@@ -88,11 +101,23 @@ func HumaAPIKeyAuth(expectedKey string) func(huma.Context, func(huma.Context)) {
 		authz := ctx.Header("Authorization")
 		const prefix = "Bearer "
 		if len(authz) <= len(prefix) || authz[:len(prefix)] != prefix {
+			slog.Warn("auth rejected",
+				slog.String("reason", "missing_or_malformed_authorization"),
+				slog.String("op", ctx.Operation().OperationID),
+				slog.String("method", ctx.Method()),
+				slog.String("path", ctx.URL().Path),
+			)
 			writeHumaUnauthorized(ctx, challengeJSON)
 			return
 		}
 		provided := []byte(authz[len(prefix):])
 		if !constantTimeEqual(provided, expected, expectedLen) {
+			slog.Warn("auth rejected",
+				slog.String("reason", "invalid_api_key"),
+				slog.String("op", ctx.Operation().OperationID),
+				slog.String("method", ctx.Method()),
+				slog.String("path", ctx.URL().Path),
+			)
 			writeHumaUnauthorized(ctx, challengeJSON)
 			return
 		}
