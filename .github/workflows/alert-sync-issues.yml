@@ -9,6 +9,9 @@ on:
 
 jobs:
   sync:
-    uses: KooshaPari/phenoShared/.github/workflows/alert-sync-issues.yml@72b9c6cbdb24c49189b0e7c7395d874830d1ed87 # pinned from @ref; org SHA may shift on new commits
-    with:
-      auto-label: auto-alert-sync
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Placeholder for custom alert sync logic
+        run: echo "TODO: implement custom alert sync logic (phenoShared reusable workflow removed)"
