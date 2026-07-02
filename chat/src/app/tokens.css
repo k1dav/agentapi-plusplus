@@ -1,0 +1,182 @@
+/*
+ * Phenotype Design System — tokens.css
+ *
+ * Single source of truth for design tokens (colors, typography, radii, motion).
+ * Exposed as CSS custom properties on `:root` and `.dark` so the rest of the
+ * app can consume them through Tailwind v4's `@theme inline` mapping in
+ * `globals.css`.
+ *
+ * Brand palette
+ *   Primary teal  #7ebab5
+ *   Midnight bg   #090a0c
+ *
+ * Contrast (WCAG 2.1 AA)
+ *   Foreground #e6ebef on Midnight #090a0c  → ≈16.0:1  (AAA normal text)
+ *   Primary  #7ebab5  on Midnight #090a0c    → ≈8.5:1   (AAA normal text)
+ *   Midnight #090a0c  on Primary  #7ebab5    → ≈8.5:1   (AAA normal text)
+ *   Muted    #9aa3ad  on Midnight #090a0c    → ≈7.7:1   (AAA normal text)
+ *   Midnight #090a0c  on Surface  #13161b    → ≈1.4:1   (decorative only)
+ */
+
+:root {
+  /* ── Brand ─────────────────────────────────────────────────────────── */
+  --color-brand-primary: #7ebab5; /* teal   — Phenotype primary */
+  --color-brand-midnight: #090a0c; /* midnight — Phenotype background */
+
+  /* ── Neutrals (cool, slate-leaning to harmonise with teal) ─────────── */
+  --color-ink-50:  #f5f7f8;
+  --color-ink-100: #e6ebef; /* primary foreground on midnight (AA/AAA) */
+  --color-ink-200: #c9d1d8;
+  --color-ink-300: #9aa3ad; /* muted foreground on midnight (AA)      */
+  --color-ink-400: #6c7682;
+  --color-ink-500: #3f4651;
+  --color-ink-600: #2a2f37;
+  --color-ink-700: #1c2027; /* surface-2                                 */
+  --color-ink-800: #13161b; /* surface-1                                 */
+  --color-ink-900: #090a0c; /* midnight background                      */
+  --color-ink-950: #050608;
+
+  /* ── Accent scale around the brand teal (#7ebab5) ──────────────────── */
+  --color-accent-50:  #ecf6f5;
+  --color-accent-100: #d3ebe8;
+  --color-accent-200: #a9d6d1;
+  --color-accent-300: #7ebab5; /* brand primary */
+  --color-accent-400: #5fa39e;
+  --color-accent-500: #4a8b87;
+  --color-accent-600: #3a706c;
+  --color-accent-700: #2d5754;
+  --color-accent-800: #1f3e3c;
+  --color-accent-900: #142726;
+
+  /* ── Semantic feedback colors (WCAG-AA tuned for midnight) ─────────── */
+  --color-success: #4ade80; /* green-400  ≈ 9.0:1 on midnight */
+  --color-warning: #fbbf24; /* amber-400  ≈ 11.6:1 on midnight */
+  --color-danger:  #f87171; /* red-400    ≈ 6.8:1 on midnight */
+  --color-info:    #60a5fa; /* blue-400   ≈ 7.1:1 on midnight */
+
+  /* ── Status indicators (used by the header status pill) ────────────── */
+  --color-status-online:  #4ade80;
+  --color-status-offline: #f87171;
+
+  /* ── Typography ────────────────────────────────────────────────────── */
+  --font-display:    "Bricolage Grotesque", "Bricolage Grotesque Fallback",
+                     ui-serif, Georgia, Cambria, "Times New Roman", serif;
+  --font-heading:    "Montserrat", "Montserrat Fallback",
+                     ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+                     Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-body:       "Montserrat", "Montserrat Fallback",
+                     ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+                     Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono:       "JetBrains Mono", "JetBrains Mono Fallback",
+                     ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+                     "Liberation Mono", "Courier New", monospace;
+
+  /* Modular scale (1.250 — major third) */
+  --text-xs:   0.75rem;   /* 12px */
+  --text-sm:   0.875rem;  /* 14px */
+  --text-base: 1rem;      /* 16px */
+  --text-lg:   1.125rem;  /* 18px */
+  --text-xl:   1.25rem;   /* 20px */
+  --text-2xl:  1.563rem;  /* 25px */
+  --text-3xl:  1.953rem;  /* 31px */
+  --text-4xl:  2.441rem;  /* 39px */
+  --text-5xl:  3.052rem;  /* 49px */
+
+  /* Weights */
+  --weight-regular:  400;
+  --weight-medium:   500;
+  --weight-semibold: 600;
+  --weight-bold:     700;
+
+  /* Line-height */
+  --leading-tight:   1.2;
+  --leading-snug:    1.35;
+  --leading-normal:  1.55;
+  --leading-relaxed: 1.7;
+
+  /* Tracking */
+  --tracking-tight:  -0.02em;
+  --tracking-normal:  0;
+  --tracking-wide:    0.04em;
+
+  /* ── Radius ────────────────────────────────────────────────────────── */
+  --radius-xs:   0.25rem;
+  --radius-sm:   0.375rem;
+  --radius-md:   0.5rem;
+  --radius-lg:   0.75rem;
+  --radius-xl:   1rem;
+  --radius-2xl:  1.25rem;
+  --radius-full: 9999px;
+
+  /* ── Spacing (4px base; semantic aliases for rhythm) ───────────────── */
+  --space-1:  0.25rem;
+  --space-2:  0.5rem;
+  --space-3:  0.75rem;
+  --space-4:  1rem;
+  --space-6:  1.5rem;
+  --space-8:  2rem;
+
+  /* ── Elevation (subtle, midnight-friendly) ─────────────────────────── */
+  --shadow-sm:  0 1px 2px 0 rgb(0 0 0 / 0.4);
+  --shadow-md:  0 4px 8px -2px rgb(0 0 0 / 0.45),
+                0 2px 4px -2px rgb(0 0 0 / 0.35);
+  --shadow-lg:  0 12px 24px -6px rgb(0 0 0 / 0.5),
+                0 4px 8px -2px rgb(0 0 0 / 0.35);
+  --shadow-focus: 0 0 0 3px rgb(126 186 181 / 0.45); /* teal focus ring */
+
+  /* ── Motion ────────────────────────────────────────────────────────── */
+  --duration-fast:    120ms;
+  --duration-normal:  200ms;
+  --duration-slow:    320ms;
+  --ease-standard:    cubic-bezier(0.2, 0, 0, 1);
+  --ease-emphasized:  cubic-bezier(0.3, 0, 0, 1);
+
+  /* ── Light theme (semantic aliases — Phenotype-aligned) ────────────── */
+  --background:           var(--color-ink-50);
+  --foreground:           var(--color-ink-900);
+  --card:                 #ffffff;
+  --card-foreground:      var(--color-ink-900);
+  --popover:              #ffffff;
+  --popover-foreground:   var(--color-ink-900);
+  --primary:              var(--color-brand-primary);
+  --primary-foreground:   var(--color-brand-midnight); /* 8.5:1 on teal */
+  --secondary:            var(--color-ink-100);
+  --secondary-foreground: var(--color-ink-900);
+  --muted:                var(--color-ink-100);
+  --muted-foreground:     var(--color-ink-500);          /* ≈7.7:1 on white */
+  --accent:               var(--color-accent-100);
+  --accent-foreground:    var(--color-ink-900);
+  --destructive:          #b91c1c;                       /* red-700 ≈6.5:1 on white */
+  --border:               var(--color-ink-200);
+  --input:                var(--color-ink-200);
+  --ring:                 var(--color-brand-primary);
+
+  /* Chart palette — Phenotype-leaning teals with warm accents */
+  --chart-1: oklch(0.77 0.075 187);  /* brand teal */
+  --chart-2: oklch(0.7  0.12  220);  /* sky        */
+  --chart-3: oklch(0.75 0.14   75);  /* amber      */
+  --chart-4: oklch(0.65 0.18  320);  /* magenta    */
+  --chart-5: oklch(0.65 0.16  25);   /* coral      */
+}
+
+/* Dark theme — the canonical Phenotype look (midnight background) */
+.dark {
+  --background:           var(--color-brand-midnight);
+  --foreground:           var(--color-ink-100);          /* ≈16:1 on midnight */
+  --card:                 var(--color-ink-800);
+  --card-foreground:      var(--color-ink-100);
+  --popover:              var(--color-ink-800);
+  --popover-foreground:   var(--color-ink-100);
+  --primary:              var(--color-brand-primary);
+  --primary-foreground:   var(--color-brand-midnight);   /* 8.5:1 on teal */
+  --secondary:            var(--color-ink-700);
+  --secondary-foreground: var(--color-ink-100);
+  --muted:                var(--color-ink-700);
+  --muted-foreground:     var(--color-ink-300);          /* ≈7.7:1 on midnight */
+  --accent:               var(--color-accent-800);
+  --accent-foreground:    var(--color-ink-100);
+  --destructive:          var(--color-danger);
+  --border:               var(--color-ink-700);
+  --input:                var(--color-ink-700);
+  --ring:                 var(--color-brand-primary);
+}
