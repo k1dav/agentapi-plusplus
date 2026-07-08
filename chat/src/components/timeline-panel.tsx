@@ -5,6 +5,7 @@ import {
   Brain,
   Check,
   Copy,
+  Download,
   ExternalLink,
   Info,
   Link2,
@@ -16,12 +17,22 @@ import {
 import {
   TimelineEvent,
   TimelineKind,
+  downloadTextFile,
   formatEventTime,
   formatToolInput,
   summarizeToolInput,
+  timelineExportFilename,
+  timelineToJsonl,
+  timelineToMarkdown,
 } from "@/lib/timeline";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useChat } from "./chat-provider";
 
 type KindFilter =
@@ -314,6 +325,28 @@ export function TimelinePanel({
 
   const mcpServerNames = mcp ? Object.keys(mcp.servers).sort() : [];
 
+  // Export honors the active kind filter; the Links and MCP views export the
+  // full timeline since they are not event subsets.
+  const isEventView = filter !== "links" && filter !== "mcp";
+  const exportEvents = isEventView ? filtered : timeline;
+  const exportFilter = isEventView ? filter : "all";
+
+  const exportTimeline = (format: "jsonl" | "markdown") => {
+    if (format === "jsonl") {
+      downloadTextFile(
+        timelineExportFilename(exportFilter, "jsonl"),
+        timelineToJsonl(exportEvents),
+        "application/x-ndjson"
+      );
+      return;
+    }
+    downloadTextFile(
+      timelineExportFilename(exportFilter, "md"),
+      timelineToMarkdown(exportEvents),
+      "text/markdown"
+    );
+  };
+
   // Keep the newest events in view as they stream in.
   useEffect(() => {
     const el = scrollRef.current;
@@ -338,10 +371,32 @@ export function TimelinePanel({
               ? mcpServerNames.length
               : filtered.length}
         </span>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="ml-auto size-7"
+              disabled={exportEvents.length === 0}
+              aria-label="Export timeline"
+              title="Export timeline"
+            >
+              <Download className="size-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => exportTimeline("jsonl")}>
+              Export as JSONL
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => exportTimeline("markdown")}>
+              Export as Markdown
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
         <Button
           variant="ghost"
           size="icon"
-          className="ml-auto size-7"
+          className="size-7"
           onClick={onClose}
           aria-label="Close timeline"
         >

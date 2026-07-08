@@ -94,6 +94,53 @@ export function formatToolInput(input: unknown): string {
   }
 }
 
+// timelineToJsonl serializes timeline events one per line, exactly as
+// GET /timeline returned them — no fields added, dropped, or reordered.
+export function timelineToJsonl(events: TimelineEvent[]): string {
+  return events.map((event) => JSON.stringify(event)).join("\n") + "\n";
+}
+
+// timelineToMarkdown renders timeline events as a readable Markdown log: one
+// section per event with kind, role, timestamp, and the content or tool input
+// fenced as JSON. Used by the timeline panel's export action.
+export function timelineToMarkdown(events: TimelineEvent[]): string {
+  const sections = events.map((event) => {
+    const meta = [event.role, event.time].filter(Boolean).join(" · ");
+    const lines = [`## #${event.id} ${event.kind}${meta ? ` (${meta})` : ""}`];
+    if (event.kind === "tool_call") {
+      lines.push(`Tool: \`${event.tool_name || "unknown"}\``);
+      if (event.tool_input != null) {
+        lines.push(["```json", formatToolInput(event.tool_input), "```"].join("\n"));
+      }
+    }
+    if (event.content) {
+      lines.push(event.content);
+    }
+    return lines.join("\n\n");
+  });
+  return ["# Timeline", ...sections].join("\n\n") + "\n";
+}
+
+// downloadTextFile triggers a browser download of the given text content. The
+// object URL is revoked after the click so repeated exports don't leak.
+export function downloadTextFile(
+  filename: string,
+  content: string,
+  mimeType: string
+): void {
+  const url = URL.createObjectURL(new Blob([content], { type: mimeType }));
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+export function timelineExportFilename(filter: string, ext: string): string {
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+  return `timeline-${filter}-${stamp}.${ext}`;
+}
+
 export function formatEventTime(time: string): string {
   const date = new Date(time);
   if (isNaN(date.getTime())) return "";
