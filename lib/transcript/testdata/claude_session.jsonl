@@ -11,5 +11,7 @@
 {"parentUuid":"a-3","isSidechain":false,"type":"system","subtype":"turn_duration","durationMs":9021,"timestamp":"2026-07-08T06:38:20.076Z","uuid":"s-1","isMeta":false,"sessionId":"sess-1"}
 {"parentUuid":null,"isSidechain":true,"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"sidechain text must be skipped"}]},"uuid":"side-1","timestamp":"2026-07-08T06:38:21.000Z","sessionId":"sess-1"}
 {"type":"ai-title","aiTitle":"Demo session","sessionId":"sess-1"}
+{"parentUuid":null,"isSidechain":false,"type":"user","message":{"role":"user","content":"<command-name>/clear</command-name>\n<command-message>clear</command-message>"},"uuid":"cmd-1","timestamp":"2026-07-08T06:39:00.000Z","sessionId":"sess-1"}
+{"parentUuid":"cmd-1","isSidechain":false,"type":"system","content":"<local-command-stdout></local-command-stdout>","timestamp":"2026-07-08T06:39:00.100Z","uuid":"cmd-2","sessionId":"sess-1"}
 {"parentUuid":"a-3","isSidechain":false,"attachment":{"type":"agent_listing_delta"},"uuid":"att-1","sessionId":"sess-1"}
 not-json-at-all

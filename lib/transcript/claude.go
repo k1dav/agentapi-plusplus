@@ -77,7 +77,7 @@ func (p *claudeParser) ParseLine(line []byte) ([]TimelineEvent, error) {
 		if content == "" {
 			content = entry.Subtype
 		}
-		if content == "" {
+		if content == "" || isClaudeCommandMeta(content) {
 			return nil, nil
 		}
 		base.Kind = KindSystem
@@ -137,7 +137,7 @@ func (p *claudeParser) parseUser(entry claudeEntry, base TimelineEvent) ([]Timel
 	// A typed user prompt has a plain string content.
 	var text string
 	if err := json.Unmarshal(msg.Content, &text); err == nil {
-		if text == "" {
+		if text == "" || isClaudeCommandMeta(text) {
 			return nil, nil
 		}
 		base.Kind = KindText
@@ -161,7 +161,7 @@ func (p *claudeParser) parseUser(entry claudeEntry, base TimelineEvent) ([]Timel
 			ev.Content = flattenClaudeToolResult(b.Content)
 			events = append(events, ev)
 		case "text":
-			if b.Text == "" {
+			if b.Text == "" || isClaudeCommandMeta(b.Text) {
 				continue
 			}
 			ev := base
@@ -172,6 +172,15 @@ func (p *claudeParser) parseUser(entry claudeEntry, base TimelineEvent) ([]Timel
 		}
 	}
 	return events, nil
+}
+
+// isClaudeCommandMeta reports whether a user-entry text is slash-command
+// bookkeeping that Claude Code logs into the transcript (e.g. after /clear),
+// rather than something a user actually said.
+func isClaudeCommandMeta(text string) bool {
+	trimmed := strings.TrimSpace(text)
+	return strings.HasPrefix(trimmed, "<command-name>") ||
+		strings.HasPrefix(trimmed, "<local-command-stdout>")
 }
 
 // flattenClaudeToolResult normalizes a tool_result content field, which is
