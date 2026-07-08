@@ -1,0 +1,15 @@
+{"type":"mode","mode":"normal","sessionId":"sess-1"}
+{"type":"permission-mode","permissionMode":"bypassPermissions","sessionId":"sess-1"}
+{"parentUuid":null,"isSidechain":false,"type":"user","message":{"role":"user","content":"list the files"},"uuid":"u-1","timestamp":"2026-07-08T06:38:10.988Z","cwd":"/workspaces/demo","sessionId":"sess-1"}
+{"type":"file-history-snapshot","messageId":"u-1","snapshot":{"messageId":"u-1","trackedFileBackups":{}}}
+{"parentUuid":"u-1","isSidechain":false,"type":"assistant","message":{"role":"assistant","content":[{"type":"thinking","thinking":"","signature":"REDACTED"}]},"uuid":"a-0","timestamp":"2026-07-08T06:38:12.000Z","sessionId":"sess-1"}
+{"parentUuid":"a-0","isSidechain":false,"type":"assistant","message":{"role":"assistant","content":[{"type":"thinking","thinking":"The user wants a file listing. I should run ls.","signature":"REDACTED"}]},"uuid":"a-1","timestamp":"2026-07-08T06:38:12.500Z","sessionId":"sess-1"}
+{"parentUuid":"a-1","isSidechain":false,"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01","name":"Bash","input":{"command":"ls","description":"List files"}}]},"uuid":"a-2","timestamp":"2026-07-08T06:38:13.000Z","sessionId":"sess-1"}
+{"parentUuid":"a-2","isSidechain":false,"type":"user","message":{"role":"user","content":[{"tool_use_id":"toolu_01","type":"tool_result","content":"README.md\nmain.go"}]},"uuid":"u-2","timestamp":"2026-07-08T06:38:13.400Z","sessionId":"sess-1"}
+{"parentUuid":"u-2","isSidechain":false,"type":"user","message":{"role":"user","content":[{"tool_use_id":"toolu_02","type":"tool_result","content":[{"type":"text","text":"part one"},{"type":"image","source":{"type":"base64"}},{"type":"text","text":"part two"}]}]},"uuid":"u-3","timestamp":"2026-07-08T06:38:13.600Z","sessionId":"sess-1"}
+{"parentUuid":"u-3","isSidechain":false,"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"There are two files: README.md and main.go."}]},"uuid":"a-3","timestamp":"2026-07-08T06:38:14.000Z","sessionId":"sess-1"}
+{"parentUuid":"a-3","isSidechain":false,"type":"system","subtype":"turn_duration","durationMs":9021,"timestamp":"2026-07-08T06:38:20.076Z","uuid":"s-1","isMeta":false,"sessionId":"sess-1"}
+{"parentUuid":null,"isSidechain":true,"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"sidechain text must be skipped"}]},"uuid":"side-1","timestamp":"2026-07-08T06:38:21.000Z","sessionId":"sess-1"}
+{"type":"ai-title","aiTitle":"Demo session","sessionId":"sess-1"}
+{"parentUuid":"a-3","isSidechain":false,"attachment":{"type":"agent_listing_delta"},"uuid":"att-1","sessionId":"sess-1"}
+not-json-at-all

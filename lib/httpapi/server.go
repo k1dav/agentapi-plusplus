@@ -26,6 +26,7 @@ import (
 	mf "github.com/coder/agentapi/lib/msgfmt"
 	st "github.com/coder/agentapi/lib/screentracker"
 	"github.com/coder/agentapi/lib/termexec"
+	"github.com/coder/agentapi/lib/transcript"
 	"github.com/coder/agentapi/x/acpio"
 	"github.com/coder/quartz"
 	"github.com/danielgtaylor/huma/v2"
@@ -56,6 +57,7 @@ type Server struct {
 	shutdown          context.CancelFunc
 	transport         Transport
 	apiKey            string
+	timelineEnabled   bool
 	readHeaderTimeout time.Duration
 	readTimeout       time.Duration
 	writeTimeout      time.Duration
@@ -150,6 +152,17 @@ type ServerConfig struct {
 	// IdleTimeout caps the keep-alive idle window between requests.
 	// Zero means use DefaultIdleTimeout.
 	IdleTimeout time.Duration
+	// Timeline configures structured-event capture from the agent's
+	// transcript files (thinking, tool calls, tool results).
+	Timeline TimelineConfig
+}
+
+type TimelineConfig struct {
+	// Enabled turns on transcript tailing for supported agents
+	// (claude, codex) on the PTY transport.
+	Enabled bool
+	// DirOverride skips transcript-directory auto-detection.
+	DirOverride string
 }
 
 // Validate allowed hosts don't contain whitespace, commas, schemes, or ports.
@@ -375,6 +388,27 @@ func NewServer(ctx context.Context, config ServerConfig) (*Server, error) {
 		s.conversation.Start(ctx)
 	}
 
+	// Start the transcript watcher: a read-only sidecar that tails the
+	// agent's own session files to surface thinking/tool-call events.
+	// Failure to start is never fatal — the server runs without a timeline.
+	if config.Timeline.Enabled && config.Transport != TransportACP && config.AgentIO != nil {
+		if !transcript.SupportedAgent(config.AgentType) {
+			logger.Info("Timeline capture not supported for this agent type", "agentType", config.AgentType)
+		} else if watcher, err := transcript.NewWatcher(transcript.Config{
+			AgentType:   config.AgentType,
+			DirOverride: config.Timeline.DirOverride,
+			NotBefore:   config.Clock.Now().Add(-2 * time.Second),
+			Logger:      logger,
+			Handler:     emitter.EmitTimelineEvent,
+		}); err != nil {
+			logger.Warn("Failed to start timeline capture", "error", err)
+		} else {
+			watcher.Start(ctx)
+			s.timelineEnabled = true
+			logger.Info("Timeline capture enabled", "agentType", config.AgentType)
+		}
+	}
+
 	return s, nil
 }
 
@@ -469,6 +503,11 @@ func (s *Server) registerRoutes() {
 		o.Description = "Returns the number of messages in the conversation history."
 	})
 
+	// GET /timeline endpoint.
+	huma.Get(s.api, "/timeline", s.getTimeline, func(o *huma.Operation) {
+		o.Description = "Returns the structured timeline captured from the agent's transcript files: thinking, text, tool calls, and tool results. Empty when timeline capture is disabled or unsupported for the agent type."
+	})
+
 	// GET /info endpoint — agent version/type/feature flags.
 	huma.Get(s.api, "/info", s.getInfo, func(o *huma.Operation) {
 		o.Description = "Returns version, agent type, and feature flags for the running server."
@@ -517,6 +556,7 @@ func (s *Server) registerRoutes() {
 		"message_update": MessageUpdateBody{},
 		"status_change":  StatusChangeBody{},
 		"agent_error":    ErrorBody{},
+		"timeline_event": TimelineEventBody{},
 	}, s.subscribeEvents)
 
 	sse.Register(s.api, huma.Operation{
@@ -571,6 +611,17 @@ func (s *Server) getMessages(ctx context.Context, input *struct{}) (*MessagesRes
 		}
 	}
 
+	return resp, nil
+}
+
+// getTimeline handles GET /timeline
+func (s *Server) getTimeline(ctx context.Context, input *struct {
+	SinceId int    `query:"since_id" default:"-1" doc:"Only return events with an id greater than this value"`
+	Kind    string `query:"kind" enum:"thinking,text,tool_call,tool_result,system," doc:"Only return events of this kind"`
+},
+) (*TimelineResponse, error) {
+	resp := &TimelineResponse{}
+	resp.Body.Events = s.emitter.Timeline(input.SinceId, TimelineKind(input.Kind))
 	return resp, nil
 }
 

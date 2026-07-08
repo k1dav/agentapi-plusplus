@@ -25,6 +25,7 @@ func (s *Server) getInfo(ctx context.Context, input *struct{}) (*InfoResponse, e
 		"upload":     true,
 		"pagination": true,
 		"slashCmd":   true,
+		"timeline":   s.timelineEnabled,
 	}
 	return resp, nil
 }

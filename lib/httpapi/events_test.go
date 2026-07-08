@@ -6,6 +6,7 @@ import (
 	"time"
 
 	st "github.com/coder/agentapi/lib/screentracker"
+	"github.com/coder/agentapi/lib/transcript"
 	"github.com/coder/quartz"
 	"github.com/stretchr/testify/assert"
 )
@@ -162,6 +163,64 @@ func TestEventEmitter(t *testing.T) {
 			assert.Equal(t, expected[i].Level, body.Level)
 			assert.Equal(t, expected[i].Time, body.Time)
 		}
+	})
+
+	t.Run("timeline-broadcast-and-ids", func(t *testing.T) {
+		emitter := NewEventEmitter(WithSubscriptionBufSize(10))
+		_, ch, _ := emitter.Subscribe()
+
+		now := time.Now()
+		emitter.EmitTimelineEvent(transcript.TimelineEvent{Kind: transcript.KindThinking, Role: "assistant", Time: now, Content: "pondering"})
+		emitter.EmitTimelineEvent(transcript.TimelineEvent{Kind: transcript.KindToolCall, Role: "assistant", Time: now, ToolName: "Bash", ToolUseId: "t1"})
+
+		ev := <-ch
+		assert.Equal(t, EventTypeTimeline, ev.Type)
+		body, ok := ev.Payload.(TimelineEventBody)
+		assert.True(t, ok)
+		assert.Equal(t, 0, body.Id)
+		assert.Equal(t, TimelineKind(transcript.KindThinking), body.Kind)
+		assert.Equal(t, "pondering", body.Content)
+
+		ev = <-ch
+		body, ok = ev.Payload.(TimelineEventBody)
+		assert.True(t, ok)
+		assert.Equal(t, 1, body.Id)
+		assert.Equal(t, "Bash", body.ToolName)
+
+		// Query filters
+		all := emitter.Timeline(-1, "")
+		assert.Len(t, all, 2)
+		onlyCalls := emitter.Timeline(-1, TimelineKind(transcript.KindToolCall))
+		assert.Len(t, onlyCalls, 1)
+		assert.Equal(t, "t1", onlyCalls[0].ToolUseId)
+		since := emitter.Timeline(0, "")
+		assert.Len(t, since, 1)
+		assert.Equal(t, 1, since[0].Id)
+	})
+
+	t.Run("timeline-replay-cap", func(t *testing.T) {
+		emitter := NewEventEmitter(WithSubscriptionBufSize(10))
+		for i := range maxTimelineReplay + 100 {
+			emitter.EmitTimelineEvent(transcript.TimelineEvent{
+				Kind:    transcript.KindText,
+				Content: fmt.Sprintf("event %d", i),
+			})
+		}
+
+		_, _, stateEvents := emitter.Subscribe()
+		var timelineEvents []Event
+		for _, ev := range stateEvents {
+			if ev.Type == EventTypeTimeline {
+				timelineEvents = append(timelineEvents, ev)
+			}
+		}
+		assert.Len(t, timelineEvents, maxTimelineReplay)
+		first, ok := timelineEvents[0].Payload.(TimelineEventBody)
+		assert.True(t, ok)
+		assert.Equal(t, 100, first.Id)
+
+		// The full history remains queryable.
+		assert.Len(t, emitter.Timeline(-1, ""), maxTimelineReplay+100)
 	})
 
 	t.Run("clock-injection", func(t *testing.T) {

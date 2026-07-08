@@ -210,6 +210,10 @@ func runServer(ctx context.Context, logger *slog.Logger, argsToPass []string) er
 		ReadTimeout:       viper.GetDuration(FlagReadTimeout),
 		WriteTimeout:      viper.GetDuration(FlagWriteTimeout),
 		IdleTimeout:       viper.GetDuration(FlagIdleTimeout),
+		Timeline: httpapi.TimelineConfig{
+			Enabled:     viper.GetBool(FlagTimeline),
+			DirOverride: viper.GetString(FlagTimelineDir),
+		},
 	})
 
 	if err != nil {
@@ -400,6 +404,8 @@ const (
 	FlagReadTimeout       = "read-timeout"
 	FlagWriteTimeout      = "write-timeout"
 	FlagIdleTimeout       = "idle-timeout"
+	FlagTimeline          = "timeline"
+	FlagTimelineDir       = "timeline-dir"
 )
 
 func CreateServerCmd() *cobra.Command {
@@ -457,6 +463,10 @@ func CreateServerCmd() *cobra.Command {
 		{FlagReadTimeout, "", time.Duration(0), "Maximum duration for reading the full request (headers + body). 0 = use default (30s)", "duration"},
 		{FlagWriteTimeout, "", time.Duration(0), "Maximum duration for writing the response. 0 = use default (60s)", "duration"},
 		{FlagIdleTimeout, "", time.Duration(0), "Maximum idle time on a keep-alive connection between requests. 0 = use default (120s)", "duration"},
+		// Timeline capture tails the agent's own transcript files to surface
+		// structured thinking/tool-call events on /events and /timeline.
+		{FlagTimeline, "", true, "Capture a structured timeline (thinking, tool calls, tool results) by tailing the agent's transcript files. Supported for claude and codex on the PTY transport. Disable with --timeline=false.", "bool"},
+		{FlagTimelineDir, "", "", "Override the directory searched for agent transcript/session files. Default: auto-detect from the agent type and working directory.", "string"},
 	}
 
 	for _, spec := range flagSpecs {

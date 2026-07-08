@@ -515,6 +515,93 @@
         ],
         "type": "object"
       },
+      "TimelineEventBody": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "description": "Event content: thinking text, message text, or tool result output",
+            "type": "string"
+          },
+          "id": {
+            "description": "Unique identifier for the timeline event. Also represents the order of the event.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/TimelineKind",
+            "description": "Kind of the event"
+          },
+          "role": {
+            "description": "Author of the event: assistant, user, or system",
+            "type": "string"
+          },
+          "session_id": {
+            "description": "Agent-native session identifier",
+            "type": "string"
+          },
+          "source_id": {
+            "description": "Transcript-native identifier of the source entry",
+            "type": "string"
+          },
+          "time": {
+            "description": "Timestamp of the event",
+            "format": "date-time",
+            "type": "string"
+          },
+          "tool_input": {
+            "description": "Tool input as raw JSON (tool_call events only)"
+          },
+          "tool_name": {
+            "description": "Tool name (tool_call events only)",
+            "type": "string"
+          },
+          "tool_use_id": {
+            "description": "Identifier joining a tool_call with its tool_result",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "time"
+        ],
+        "type": "object"
+      },
+      "TimelineKind": {
+        "enum": [
+          "system",
+          "text",
+          "thinking",
+          "tool_call",
+          "tool_result"
+        ],
+        "example": "thinking",
+        "title": "TimelineKind",
+        "type": "string"
+      },
+      "TimelineResponseBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "example": "https://example.com/schemas/TimelineResponseBody.json",
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "events": {
+            "description": "Structured timeline events captured from the agent's transcript files",
+            "items": {
+              "$ref": "#/components/schemas/TimelineEventBody"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "events"
+        ],
+        "type": "object"
+      },
       "Transport": {
         "enum": [
           "acp",
@@ -695,6 +782,32 @@
                           "event"
                         ],
                         "title": "Event status_change",
+                        "type": "object"
+                      },
+                      {
+                        "properties": {
+                          "data": {
+                            "$ref": "#/components/schemas/TimelineEventBody"
+                          },
+                          "event": {
+                            "const": "timeline_event",
+                            "description": "The event name.",
+                            "type": "string"
+                          },
+                          "id": {
+                            "description": "The event ID.",
+                            "type": "integer"
+                          },
+                          "retry": {
+                            "description": "The retry time in milliseconds.",
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "data",
+                          "event"
+                        ],
+                        "title": "Event timeline_event",
                         "type": "object"
                       }
                     ]
@@ -1017,6 +1130,67 @@
           }
         },
         "summary": "Get status"
+      }
+    },
+    "/timeline": {
+      "get": {
+        "description": "Returns the structured timeline captured from the agent's transcript files: thinking, text, tool calls, and tool results. Empty when timeline capture is disabled or unsupported for the agent type.",
+        "operationId": "get-timeline",
+        "parameters": [
+          {
+            "description": "Only return events of this kind",
+            "explode": false,
+            "in": "query",
+            "name": "kind",
+            "schema": {
+              "description": "Only return events of this kind",
+              "enum": [
+                "",
+                "system",
+                "text",
+                "thinking",
+                "tool_call",
+                "tool_result"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only return events with an id greater than this value",
+            "explode": false,
+            "in": "query",
+            "name": "since_id",
+            "schema": {
+              "default": -1,
+              "description": "Only return events with an id greater than this value",
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimelineResponseBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get timeline"
       }
     },
     "/upload": {

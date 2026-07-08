@@ -1,0 +1,14 @@
+{"timestamp":"2026-07-03T07:23:27.016Z","type":"session_meta","payload":{"session_id":"codex-sess-1","id":"codex-sess-1","cwd":"/workspaces/demo","originator":"codex-tui","cli_version":"0.142.5"}}
+{"timestamp":"2026-07-03T07:23:27.017Z","type":"event_msg","payload":{"type":"task_started","turn_id":"turn-1"}}
+{"timestamp":"2026-07-03T07:23:27.027Z","type":"response_item","payload":{"type":"message","role":"developer","content":[{"type":"input_text","text":"<permissions instructions> huge developer payload that must be skipped"}]}}
+{"timestamp":"2026-07-03T07:23:27.028Z","type":"turn_context","payload":{"turn_id":"turn-1","cwd":"/workspaces/demo"}}
+{"timestamp":"2026-07-03T07:23:27.036Z","type":"event_msg","payload":{"type":"user_message","message":"please list the files","images":[]}}
+{"timestamp":"2026-07-03T07:23:31.282Z","type":"event_msg","payload":{"type":"agent_message","message":"I'll list the files first.","phase":"commentary"}}
+{"timestamp":"2026-07-03T07:23:31.285Z","type":"response_item","payload":{"type":"function_call","id":"fc_01","name":"exec_command","arguments":"{\"cmd\":\"ls\",\"workdir\":\"/workspaces/demo\"}","call_id":"call_01"}}
+{"timestamp":"2026-07-03T07:23:31.492Z","type":"response_item","payload":{"type":"function_call_output","call_id":"call_01","output":"README.md\nmain.go\n"}}
+{"timestamp":"2026-07-03T07:23:31.525Z","type":"event_msg","payload":{"type":"token_count","info":{}}}
+{"timestamp":"2026-07-03T07:23:32.767Z","type":"response_item","payload":{"type":"reasoning","id":"rs_enc","summary":[],"encrypted_content":"gAAAAABencrypted"}}
+{"timestamp":"2026-07-03T07:23:33.000Z","type":"response_item","payload":{"type":"reasoning","id":"rs_sum","summary":[{"type":"summary_text","text":"Considering the file list output."}],"encrypted_content":"gAAAAABencrypted"}}
+{"timestamp":"2026-07-03T07:25:14.002Z","type":"response_item","payload":{"type":"custom_tool_call","id":"ctc_01","status":"completed","call_id":"call_02","name":"apply_patch","input":"*** Begin Patch\n*** Update File: /workspaces/demo/README.md\n*** End Patch"}}
+{"timestamp":"2026-07-03T07:25:14.039Z","type":"response_item","payload":{"type":"custom_tool_call_output","call_id":"call_02","output":"Exit code: 0"}}
+{"timestamp":"2026-07-03T07:26:10.160Z","type":"event_msg","payload":{"type":"task_complete","turn_id":"turn-1","last_agent_message":"done"}}

@@ -153,3 +153,9 @@ type MessagesCountResponse struct {
 		Count int `json:"count" doc:"Number of messages"`
 	}
 }
+
+type TimelineResponse struct {
+	Body struct {
+		Events []TimelineEventBody `json:"events" nullable:"false" doc:"Structured timeline events captured from the agent's transcript files"`
+	}
+}

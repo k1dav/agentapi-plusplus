@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -10,6 +11,7 @@ import (
 
 	mf "github.com/coder/agentapi/lib/msgfmt"
 	st "github.com/coder/agentapi/lib/screentracker"
+	"github.com/coder/agentapi/lib/transcript"
 	"github.com/coder/agentapi/lib/util"
 	"github.com/danielgtaylor/huma/v2"
 )
@@ -21,6 +23,7 @@ const (
 	EventTypeStatusChange  EventType = "status_change"
 	EventTypeScreenUpdate  EventType = "screen_update"
 	EventTypeError         EventType = "agent_error"
+	EventTypeTimeline      EventType = "timeline_event"
 )
 
 type AgentStatus string
@@ -61,6 +64,50 @@ type ErrorBody struct {
 	Time    time.Time     `json:"time" doc:"Timestamp when the error occurred"`
 }
 
+type TimelineKind string
+
+var TimelineKindValues = []TimelineKind{
+	TimelineKind(transcript.KindThinking),
+	TimelineKind(transcript.KindText),
+	TimelineKind(transcript.KindToolCall),
+	TimelineKind(transcript.KindToolResult),
+	TimelineKind(transcript.KindSystem),
+}
+
+func (t TimelineKind) Schema(r huma.Registry) *huma.Schema {
+	return util.OpenAPISchema(r, "TimelineKind", TimelineKindValues)
+}
+
+// TimelineEventBody is a structured event captured from the agent's
+// transcript files: thinking, text, tool calls, tool results.
+type TimelineEventBody struct {
+	Id        int             `json:"id" doc:"Unique identifier for the timeline event. Also represents the order of the event."`
+	Kind      TimelineKind    `json:"kind" doc:"Kind of the event"`
+	Role      string          `json:"role,omitempty" doc:"Author of the event: assistant, user, or system"`
+	Time      time.Time       `json:"time" doc:"Timestamp of the event"`
+	SessionId string          `json:"session_id,omitempty" doc:"Agent-native session identifier"`
+	Content   string          `json:"content,omitempty" doc:"Event content: thinking text, message text, or tool result output"`
+	ToolName  string          `json:"tool_name,omitempty" doc:"Tool name (tool_call events only)"`
+	ToolInput json.RawMessage `json:"tool_input,omitempty" doc:"Tool input as raw JSON (tool_call events only)"`
+	ToolUseId string          `json:"tool_use_id,omitempty" doc:"Identifier joining a tool_call with its tool_result"`
+	SourceId  string          `json:"source_id,omitempty" doc:"Transcript-native identifier of the source entry"`
+}
+
+func toTimelineEventBody(ev transcript.TimelineEvent) TimelineEventBody {
+	return TimelineEventBody{
+		Id:        ev.Id,
+		Kind:      TimelineKind(ev.Kind),
+		Role:      ev.Role,
+		Time:      ev.Time,
+		SessionId: ev.SessionId,
+		Content:   ev.Content,
+		ToolName:  ev.ToolName,
+		ToolInput: ev.ToolInput,
+		ToolUseId: ev.ToolUseId,
+		SourceId:  ev.SourceId,
+	}
+}
+
 type Event struct {
 	Type    EventType
 	Payload any
@@ -76,6 +123,8 @@ type EventEmitter struct {
 	subscriptionBufSize uint
 	screen              string
 	errors              []ErrorBody
+	timeline            []TimelineEventBody
+	timelineNextId      int
 	clock               quartz.Clock
 }
 
@@ -96,6 +145,16 @@ const defaultSubscriptionBufSize uint = 1024
 
 // maxStoredErrors caps the number of errors retained for late subscribers.
 const maxStoredErrors = 100
+
+// maxStoredTimelineEvents caps the in-memory timeline; the oldest events are
+// dropped first. Tool results dominate event size, so this bounds worst-case
+// memory to tens of MB.
+const maxStoredTimelineEvents = 10000
+
+// maxTimelineReplay caps how many recent timeline events are replayed to a
+// late SSE subscriber. The full history stays available via GET /timeline,
+// and monotonic ids let clients detect the gap.
+const maxTimelineReplay = 500
 
 type EventEmitterOption func(*EventEmitter)
 
@@ -239,6 +298,43 @@ func (e *EventEmitter) EmitError(message string, level st.ErrorLevel) {
 	e.notifyChannels(EventTypeError, errorBody)
 }
 
+// EmitTimelineEvent stores a normalized transcript event and broadcasts it
+// to subscribers. Ids are assigned here, monotonically.
+func (e *EventEmitter) EmitTimelineEvent(ev transcript.TimelineEvent) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	ev.Id = e.timelineNextId
+	e.timelineNextId++
+
+	body := toTimelineEventBody(ev)
+	e.timeline = append(e.timeline, body)
+	if len(e.timeline) > maxStoredTimelineEvents {
+		e.timeline = e.timeline[len(e.timeline)-maxStoredTimelineEvents:]
+	}
+
+	e.notifyChannels(EventTypeTimeline, body)
+}
+
+// Timeline returns stored timeline events with id > sinceId, optionally
+// filtered by kind (empty kind matches all).
+func (e *EventEmitter) Timeline(sinceId int, kind TimelineKind) []TimelineEventBody {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	events := make([]TimelineEventBody, 0, len(e.timeline))
+	for _, ev := range e.timeline {
+		if ev.Id <= sinceId {
+			continue
+		}
+		if kind != "" && ev.Kind != kind {
+			continue
+		}
+		events = append(events, ev)
+	}
+	return events
+}
+
 // Assumes the caller holds the lock.
 func (e *EventEmitter) currentStateAsEvents() []Event {
 	events := make([]Event, 0, len(e.messages)+2)
@@ -262,6 +358,19 @@ func (e *EventEmitter) currentStateAsEvents() []Event {
 		events = append(events, Event{
 			Type:    EventTypeError,
 			Payload: err,
+		})
+	}
+
+	// Replay only the most recent timeline events; the full history is
+	// available via GET /timeline.
+	timeline := e.timeline
+	if len(timeline) > maxTimelineReplay {
+		timeline = timeline[len(timeline)-maxTimelineReplay:]
+	}
+	for _, ev := range timeline {
+		events = append(events, Event{
+			Type:    EventTypeTimeline,
+			Payload: ev,
 		})
 	}
 
