@@ -1,77 +1,74 @@
 name: Build Release Binaries
 
+# 發佈 release（publish）時自動編譯 agentapi binary 並掛上 release 資產。
+# 注意：不使用 repo 的 make build / task build:go —— 該路徑缺少 chat UI 嵌入步驟
+# （next build 產物需先複製進 lib/httpapi/chat/ 供 go:embed 打包），
+# 因此以下直接照上游 coder/agentapi Makefile 的流程執行。
+
 permissions:
-  contents: read
+  contents: write
 
 on:
   release:
     types: [published]
-  push:
-    branches: [ main ]
   workflow_dispatch:
-    inputs:
-      create-artifact:
-        description: 'Create build artifact'
-        required: true
-        type: boolean
-        default: false
 
 jobs:
   build:
     name: Build Release Binaries
-    runs-on: ubuntu-latest-8-cores
-    if: ${{ github.repository_owner == 'coder' }}
+    runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@v4
 
-    - name: Set up Go
-      uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
-      with:
-        go-version: 'stable'
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
 
-    - name: Set up Bun
-      uses: oven-sh/setup-bun@v2
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
 
-    - name: Install Chat Dependencies
-      run: cd chat && bun install
+      - name: Build chat UI
+        # BASE_PATH 必須是 lib/httpapi/embed.go 的 magicBasePath，
+        # binary 啟動時才能把它改寫成實際的 chat base path（AGENTAPI_CHAT_BASE_PATH）
+        run: |
+          cd chat
+          bun install --frozen-lockfile
+          NEXT_PUBLIC_BASE_PATH="/magic-base-path-placeholder" bun run build
 
-    - name: Run make gen and check for unstaged changes
-      run: |
-        make gen
-        ./check_unstaged.sh
+      - name: Embed chat UI
+        run: |
+          rm -rf lib/httpapi/chat
+          mkdir -p lib/httpapi/chat
+          touch lib/httpapi/chat/marker
+          cp -r chat/out/. lib/httpapi/chat/
 
-    - name: Build and Upload
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      shell: bash
-      run: |
-        build_variants=(
-          "linux amd64 agentapi-linux-amd64"
-          "linux arm64 agentapi-linux-arm64"
-          "darwin amd64 agentapi-darwin-amd64"
-          "darwin arm64 agentapi-darwin-arm64"
-          "windows amd64 agentapi-windows-amd64.exe"
-        )
+      - name: Build binaries
+        run: |
+          build_variants=(
+            "linux amd64 agentapi-linux-amd64"
+            "linux arm64 agentapi-linux-arm64"
+            "darwin amd64 agentapi-darwin-amd64"
+            "darwin arm64 agentapi-darwin-arm64"
+          )
+          for variant in "${build_variants[@]}"; do
+            read -r goos goarch artifact_name <<< "$variant"
+            echo "Building $artifact_name..."
+            CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" \
+              go build -o "out/$artifact_name" main.go
+          done
 
-        for variant in "${build_variants[@]}"; do
-          read -r goos goarch artifact_name <<< "$variant"
+      - name: Upload build artifact
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: agentapi-build
+          path: out/
+          retention-days: 7
 
-          echo "Building for GOOS=$goos GOARCH=$goarch..."
-          CGO_ENABLED=0 GOOS=$goos GOARCH=$goarch BINPATH="out/$artifact_name" make build
-        done
-
-    - name: Upload Build Artifact
-      if: ${{ inputs.create-artifact }}
-      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-      with:
-        name: agentapi-build
-        path: ${{ github.workspace }}/out
-        retention-days: 7
-
-    - name: Upload Release Assets
-      if: ${{ github.event_name == 'release' || github.ref == 'refs/heads/main' }}
-      run: gh release upload "$RELEASE_TAG" "$GITHUB_WORKSPACE"/out/* --clobber
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || 'preview' }}
+      - name: Upload release assets
+        if: ${{ github.event_name == 'release' }}
+        run: gh release upload "${{ github.event.release.tag_name }}" out/* --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
