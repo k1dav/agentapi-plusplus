@@ -1,6 +1,8 @@
 "use client";
 
 import React, {useLayoutEffect, useRef, useEffect, useCallback, useMemo, useState} from "react";
+import {ToolCallPair} from "@/lib/timeline";
+import {ToolCardGroup} from "./tool-card";
 
 interface Message {
   role: string;
@@ -16,6 +18,9 @@ interface DraftMessage extends Omit<Message, "id"> {
 
 interface MessageListProps {
   messages: (Message | DraftMessage)[];
+  // Tool invocations grouped by conversation turn (from the timeline);
+  // turn k holds the tools used while answering the k-th user message.
+  toolTurns?: ToolCallPair[][];
 }
 
 interface ProcessedMessageProps {
@@ -23,7 +28,7 @@ interface ProcessedMessageProps {
   index: number;
 }
 
-export default function MessageList({messages}: MessageListProps) {
+export default function MessageList({messages, toolTurns}: MessageListProps) {
   const [scrollAreaRef, setScrollAreaRef] = useState<HTMLDivElement | null>(null);
 
   // Track if user is at bottom - default to true for initial scroll
@@ -112,7 +117,7 @@ export default function MessageList({messages}: MessageListProps) {
 
     // Update the last known scroll height
     lastScrollHeightRef.current = currentScrollHeight;
-  }, [messages, scrollAreaRef]);
+  }, [messages, toolTurns, scrollAreaRef]);
 
   // If no messages, show a placeholder
   if (messages.length === 0) {
@@ -123,39 +128,56 @@ export default function MessageList({messages}: MessageListProps) {
     );
   }
 
+  // Attach each turn's tool cards to the first agent message that follows
+  // the corresponding user message.
+  let userCount = 0;
+  const renderedTurns = new Set<number>();
+
   return (
     <div className="overflow-y-auto flex-1" ref={setScrollAreaRef}>
       <div
         className="p-4 flex flex-col gap-4 max-w-4xl mx-auto transition-all duration-300 ease-in-out min-h-0">
-        {messages.map((message, index) => (
-          <div
-            key={message.id ?? "draft"}
-            className={`${message.role === "user" ? "text-right" : ""}`}
-          >
+        {messages.map((message, index) => {
+          let turnTools: ToolCallPair[] | undefined;
+          if (message.role === "user") {
+            userCount++;
+          } else if (toolTurns && !renderedTurns.has(userCount)) {
+            renderedTurns.add(userCount);
+            turnTools = toolTurns[userCount];
+          }
+          return (
             <div
-              className={`inline-block rounded-lg ${
-                message.role === "user"
-                  ? "bg-accent-foreground rounded-lg max-w-[90%] px-4 py-3 text-accent"
-                  : "max-w-[80ch]"
-              } ${message.id === undefined ? "animate-pulse" : ""}`}
+              key={message.id ?? "draft"}
+              className={`${message.role === "user" ? "text-right" : ""}`}
             >
+              {turnTools && turnTools.length > 0 && (
+                <ToolCardGroup pairs={turnTools} />
+              )}
               <div
-                className={`whitespace-pre-wrap break-words text-left text-xs md:text-sm leading-relaxed md:leading-normal ${
-                  message.role === "user" ? "" : "font-mono"
-                }`}
+                className={`inline-block rounded-lg ${
+                  message.role === "user"
+                    ? "bg-accent-foreground rounded-lg max-w-[90%] px-4 py-3 text-accent"
+                    : "max-w-[80ch]"
+                } ${message.id === undefined ? "animate-pulse" : ""}`}
               >
-                {message.role !== "user" && message.content === "" ? (
-                  <LoadingDots />
-                ) : (
-                  <ProcessedMessage
-                    messageContent={message.content}
-                    index={index}
-                  />
-                )}
+                <div
+                  className={`whitespace-pre-wrap break-words text-left text-xs md:text-sm leading-relaxed md:leading-normal ${
+                    message.role === "user" ? "" : "font-mono"
+                  }`}
+                >
+                  {message.role !== "user" && message.content === "" ? (
+                    <LoadingDots />
+                  ) : (
+                    <ProcessedMessage
+                      messageContent={message.content}
+                      index={index}
+                    />
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

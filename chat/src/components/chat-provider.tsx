@@ -11,6 +11,7 @@ import {
 } from "react";
 import {toast} from "sonner";
 import {getErrorMessage} from "@/lib/error-utils";
+import {TimelineEvent} from "@/lib/timeline";
 
 interface Message {
   id: number;
@@ -95,6 +96,7 @@ export const AgentType: Record<Exclude<AgentType, "unknown">, AgentColorDisplayN
 
 interface ChatContextValue {
   messages: (Message | DraftMessage)[];
+  timeline: TimelineEvent[];
   loading: boolean;
   serverStatus: ServerStatus;
   sendMessage: (message: string, type?: MessageType) => void;
@@ -141,6 +143,7 @@ const useAgentAPIUrl = (): string => {
 
 export function ChatProvider({ children }: PropsWithChildren) {
   const [messages, setMessages] = useState<(Message | DraftMessage)[]>([]);
+  const [timeline, setTimeline] = useState<TimelineEvent[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [serverStatus, setServerStatus] = useState<ServerStatus>("unknown");
   const [agentType, setAgentType] = useState<AgentType>("custom");
@@ -157,6 +160,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
 
       // Reset messages when establishing a new connection
       setMessages([]);
+      setTimeline([]);
 
       if (!agentAPIUrl) {
         console.warn(
@@ -203,6 +207,24 @@ export function ChatProvider({ children }: PropsWithChildren) {
               },
             ];
           }
+        });
+      });
+
+      // Handle structured timeline events (thinking, tool calls/results)
+      eventSource.addEventListener("timeline_event", (event) => {
+        const data: TimelineEvent = JSON.parse(event.data);
+        setTimeline((prev) => {
+          const existingIndex = prev.findIndex((e) => e.id === data.id);
+          if (existingIndex !== -1) {
+            const next = [...prev];
+            next[existingIndex] = data;
+            return next;
+          }
+          // Ids are monotonic; the common case is a simple append.
+          if (prev.length === 0 || prev[prev.length - 1].id < data.id) {
+            return [...prev, data];
+          }
+          return [...prev, data].sort((a, b) => a.id - b.id);
         });
       });
 
@@ -380,6 +402,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
     <ChatContext.Provider
       value={{
         messages,
+        timeline,
         loading,
         sendMessage,
         serverStatus,
