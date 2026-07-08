@@ -28,6 +28,7 @@ func (s *Server) getInfo(ctx context.Context, input *struct{}) (*InfoResponse, e
 		"pagination": true,
 		"slashCmd":   true,
 		"timeline":   s.timelineEnabled,
+		"mcp":        s.mcpStore != nil,
 	}
 	return resp, nil
 }

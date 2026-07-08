@@ -12,6 +12,7 @@ Fork lineage: [coder/agentapi](https://github.com/coder/agentapi) → KooshaPari
 
 - **Structured timeline** — thinking / tool calls / tool results captured from the agent's own transcript files, exposed via `GET /timeline` and SSE `timeline_event` (see below)
 - **`DELETE /messages` resets the agent session** — clears history + timeline and sends the agent's new-session command (claude: `/clear`, codex: `/new`)
+- **Runtime MCP config** — `GET /mcp` / `PUT /mcp` manage the agent's MCP servers on the fly; `?restart=true` restarts the agent process in place so changes apply immediately
 - **Chat UI process view** — inline collapsible tool-call cards and a filterable timeline side panel
 - **API-key auth** on mutating routes (`--api-key` / `AGENTAPI_API_KEY`)
 - Extra read endpoints: `/info`, `/health`, `/version`, `/ready`, `/messages/count`
@@ -40,6 +41,8 @@ Build from source: `go build -o agentapi main.go` (chat UI assets are embedded s
 | POST `/message` | Send a message (`user` or `raw` keystrokes); auth-gated |
 | DELETE `/messages` | Clear history **and timeline**, and reset the agent's session (`?new_session=false` to skip); auth-gated |
 | GET `/timeline` | Structured process events; `?kind=` and `?since_id=` filters |
+| GET `/mcp` | Currently configured MCP servers and the config file path |
+| PUT `/mcp` | Replace the MCP server set; `?restart=true` restarts the agent to apply immediately; auth-gated |
 | GET `/status` | Agent status: `stable` or `running` |
 | GET `/events` | SSE stream: `message_update`, `status_change`, `timeline_event`, `agent_error` |
 | POST `/upload` | Upload files; auth-gated |
@@ -85,6 +88,27 @@ Behavior notes:
 - Session switches (claude `/clear`, codex new thread) are followed automatically and marked with a `system` "session switched" event; files from previous runs are never re-ingested (mtime filter)
 - The last 10,000 events are kept in memory; late SSE subscribers get the most recent 500 replayed (full history via `GET /timeline`); ids keep increasing across `DELETE /messages`, so `since_id` polling never misses events
 - Thinking events appear only when the backend writes plaintext reasoning to the transcript. Some deployments encrypt/redact it at the source (Claude signature-only thinking blocks, Codex `encrypted_content`); tool calls and results are always plaintext and unaffected
+
+## Runtime MCP configuration
+
+Agents load MCP config at process startup. `PUT /mcp` writes the agent's config file — claude: project `.mcp.json` in the working directory, codex: the `[mcp_servers.*]` tables in `~/.codex/config.toml` (other content, including comments, is preserved verbatim) — and with `?restart=true` restarts the agent process in place so the change takes effect immediately. AgentAPI keeps serving across the restart; the agent's conversation context is reset (a new session starts).
+
+```bash
+curl 'localhost:3284/mcp'    # current servers + config path
+
+# Full replace: servers not listed are removed. Restart to apply now.
+curl -X PUT 'localhost:3284/mcp?restart=true' -H 'Content-Type: application/json' -d '{
+  "servers": {
+    "memory": {"command": "npx", "args": ["-y", "@modelcontextprotocol/server-memory"]},
+    "remote": {"type": "http", "url": "https://mcp.example.com", "headers": {"X-Key": "..."}}
+  }
+}'
+
+curl -X PUT localhost:3284/mcp -H 'Content-Type: application/json' \
+  -d '{"servers":{}}'         # clear all MCP servers (applies next session)
+```
+
+Server config objects are passed through to the agent verbatim — use whatever fields the agent supports. Supported for `claude` and `codex` on the PTY transport (`features.mcp` in `GET /info`); MCP tool invocations show up in the timeline like any other tool call.
 
 ## Supported agents
 

@@ -6,6 +6,7 @@ toolchain go1.24.13
 
 require (
 	github.com/ActiveState/termtest/xpty v0.6.0
+	github.com/BurntSushi/toml v1.5.0
 	github.com/acarl005/stripansi v0.0.0-20180116102854-5a71ef0e047d
 	github.com/charmbracelet/bubbletea v1.3.4
 	github.com/coder/acp-go-sdk v0.6.3
@@ -36,7 +37,6 @@ require (
 	github.com/Antonboom/errname v1.1.1 // indirect
 	github.com/Antonboom/nilnil v1.1.1 // indirect
 	github.com/Antonboom/testifylint v1.6.4 // indirect
-	github.com/BurntSushi/toml v1.5.0 // indirect
 	github.com/Djarvur/go-err113 v0.1.1 // indirect
 	github.com/Masterminds/semver/v3 v3.3.1 // indirect
 	github.com/MirrexOne/unqueryvet v1.2.1 // indirect

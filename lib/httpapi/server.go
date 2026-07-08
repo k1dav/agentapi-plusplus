@@ -23,9 +23,9 @@ import (
 	"github.com/coder/agentapi/internal/middleware"
 	"github.com/coder/agentapi/internal/version"
 	"github.com/coder/agentapi/lib/logctx"
+	"github.com/coder/agentapi/lib/mcpconfig"
 	mf "github.com/coder/agentapi/lib/msgfmt"
 	st "github.com/coder/agentapi/lib/screentracker"
-	"github.com/coder/agentapi/lib/termexec"
 	"github.com/coder/agentapi/lib/transcript"
 	"github.com/coder/agentapi/x/acpio"
 	"github.com/coder/quartz"
@@ -58,6 +58,8 @@ type Server struct {
 	transport         Transport
 	apiKey            string
 	timelineEnabled   bool
+	mcpStore          mcpconfig.Store
+	restartAgent      func(context.Context) error
 	readHeaderTimeout time.Duration
 	readTimeout       time.Duration
 	writeTimeout      time.Duration
@@ -155,6 +157,10 @@ type ServerConfig struct {
 	// Timeline configures structured-event capture from the agent's
 	// transcript files (thinking, tool calls, tool results).
 	Timeline TimelineConfig
+	// RestartAgent restarts the agent process in place (PTY transport).
+	// Used by PUT /mcp?restart=true so config changes take effect
+	// immediately. Nil when restarting is not supported.
+	RestartAgent func(context.Context) error
 }
 
 type TimelineConfig struct {
@@ -325,13 +331,9 @@ func NewServer(ctx context.Context, config ServerConfig) (*Server, error) {
 		}
 		conversation = acpio.NewACPConversation(ctx, acpIO, logger, initialPrompt, emitter, config.Clock)
 	} else {
-		proc, ok := config.AgentIO.(*termexec.Process)
-		if !ok && config.AgentIO != nil {
-			return nil, fmt.Errorf("PTY transport requires termexec.Process")
-		}
 		conversation = st.NewPTY(ctx, st.PTYConversationConfig{
 			AgentType:              config.AgentType,
-			AgentIO:                proc,
+			AgentIO:                config.AgentIO,
 			Clock:                  config.Clock,
 			SnapshotInterval:       snapshotInterval,
 			ScreenStabilityLength:  2 * time.Second,
@@ -369,10 +371,23 @@ func NewServer(ctx context.Context, config ServerConfig) (*Server, error) {
 		shutdown:          shutdownCancel,
 		transport:         config.Transport,
 		apiKey:            config.APIKey,
+		restartAgent:      config.RestartAgent,
 		readHeaderTimeout: config.ReadHeaderTimeout,
 		readTimeout:       config.ReadTimeout,
 		writeTimeout:      config.WriteTimeout,
 		idleTimeout:       config.IdleTimeout,
+	}
+
+	// MCP config management is file-based and safe to expose whenever the
+	// agent type is supported on the PTY transport.
+	if config.Transport != TransportACP && mcpconfig.SupportedAgent(config.AgentType) {
+		store, err := mcpconfig.NewStore(config.AgentType, "")
+		if err != nil {
+			logger.Warn("Failed to set up MCP config store", "error", err)
+		} else {
+			s.mcpStore = store
+			logger.Info("MCP config management enabled", "path", store.Path())
+		}
 	}
 
 	// Register API routes
@@ -506,6 +521,17 @@ func (s *Server) registerRoutes() {
 	// GET /timeline endpoint.
 	huma.Get(s.api, "/timeline", s.getTimeline, func(o *huma.Operation) {
 		o.Description = "Returns the structured timeline captured from the agent's transcript files: thinking, text, tool calls, and tool results. Empty when timeline capture is disabled or unsupported for the agent type."
+	})
+
+	// GET /mcp endpoint.
+	huma.Get(s.api, "/mcp", s.getMcp, func(o *huma.Operation) {
+		o.Description = "Returns the agent's currently configured MCP servers (claude: project .mcp.json, codex: ~/.codex/config.toml). Errors for agent types without MCP config support."
+	})
+
+	// PUT /mcp endpoint — replace the MCP server set.
+	huma.Put(s.api, "/mcp", s.updateMcp, func(o *huma.Operation) {
+		o.Description = "Replaces the agent's MCP server set with exactly the servers in the request body, preserving unrelated config content. Agents load MCP config at startup, so changes take effect on the next session unless ?restart=true is passed, which restarts the agent process in place (conversation context is lost; AgentAPI keeps serving)."
+		o.Middlewares = []func(huma.Context, func(huma.Context)){authMW}
 	})
 
 	// GET /info endpoint — agent version/type/feature flags.

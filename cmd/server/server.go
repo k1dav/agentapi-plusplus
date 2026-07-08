@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/coder/agentapi/lib/screentracker"
@@ -26,6 +27,49 @@ import (
 	st "github.com/coder/agentapi/lib/screentracker"
 	"github.com/coder/agentapi/lib/termexec"
 )
+
+// agentSupervisor owns the PTY agent process and can restart it in place
+// (e.g. after an MCP config change). Holders of the SwappableProcess facade
+// keep working across restarts; the exit monitor in runServer follows the
+// swap instead of shutting the server down.
+type agentSupervisor struct {
+	mu     sync.Mutex
+	logger *slog.Logger
+	swap   *termexec.SwappableProcess
+	setup  func(ctx context.Context) (*termexec.Process, error)
+}
+
+// Restart closes the current agent process and starts a fresh one with the
+// same program, args, and terminal size. On failure the dead process is kept
+// in place, which the exit monitor treats as a normal agent death (server
+// shutdown).
+func (s *agentSupervisor) Restart(ctx context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	old := s.swap.Current()
+	if old == nil {
+		return xerrors.New("agent process is not running")
+	}
+	s.logger.Info("Restarting agent process")
+	if err := old.Close(s.logger, 10*time.Second); err != nil {
+		s.logger.Warn("Error closing agent process during restart", "error", err)
+	}
+	newProc, err := s.setup(ctx)
+	if err != nil {
+		return xerrors.Errorf("failed to start new agent process: %w", err)
+	}
+	s.swap.Set(newProc)
+	s.logger.Info("Agent process restarted")
+	return nil
+}
+
+// currentSettled returns the current process, waiting out any in-flight
+// restart (Restart holds the lock until the new process is installed).
+func (s *agentSupervisor) currentSettled() *termexec.Process {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.swap.Current()
+}
 
 type AgentType = msgfmt.AgentType
 
@@ -160,6 +204,7 @@ func runServer(ctx context.Context, logger *slog.Logger, argsToPass []string) er
 	var agentIO st.AgentIO
 	transport := "pty"
 	var process *termexec.Process
+	var supervisor *agentSupervisor
 	var acpResult *httpapi.SetupACPResult
 
 	if printOpenAPI {
@@ -177,18 +222,30 @@ func runServer(ctx context.Context, logger *slog.Logger, argsToPass []string) er
 		agentIO = acpIO
 		transport = "acp"
 	} else {
-		proc, err := httpapi.SetupProcess(ctx, httpapi.SetupProcessConfig{
-			Program:        agent,
-			ProgramArgs:    argsToPass[1:],
-			TerminalWidth:  termWidth,
-			TerminalHeight: termHeight,
-			AgentType:      agentType,
-		})
+		// The setup closure deliberately ignores the caller's context and
+		// uses runServer's ctx: it carries the logger (logctx) and outlives
+		// any single HTTP request that triggers a restart.
+		setupAgentProcess := func(context.Context) (*termexec.Process, error) {
+			return httpapi.SetupProcess(ctx, httpapi.SetupProcessConfig{
+				Program:        agent,
+				ProgramArgs:    argsToPass[1:],
+				TerminalWidth:  termWidth,
+				TerminalHeight: termHeight,
+				AgentType:      agentType,
+			})
+		}
+		proc, err := setupAgentProcess(ctx)
 		if err != nil {
 			return xerrors.Errorf("failed to setup process: %w", err)
 		}
 		process = proc
-		agentIO = proc
+		swappable := termexec.NewSwappableProcess(proc)
+		supervisor = &agentSupervisor{
+			logger: logger,
+			swap:   swappable,
+			setup:  setupAgentProcess,
+		}
+		agentIO = swappable
 	}
 	port := viper.GetInt(FlagPort)
 	srv, err := httpapi.NewServer(ctx, httpapi.ServerConfig{
@@ -214,6 +271,12 @@ func runServer(ctx context.Context, logger *slog.Logger, argsToPass []string) er
 			Enabled:     viper.GetBool(FlagTimeline),
 			DirOverride: viper.GetString(FlagTimelineDir),
 		},
+		RestartAgent: func() func(context.Context) error {
+			if supervisor == nil {
+				return nil
+			}
+			return supervisor.Restart
+		}(),
 	})
 
 	if err != nil {
@@ -233,18 +296,31 @@ func runServer(ctx context.Context, logger *slog.Logger, argsToPass []string) er
 
 	logger.Info("Starting server on port", "port", port)
 
-	// Monitor process exit
+	// Monitor process exit. When the supervisor restarts the agent, the old
+	// process exits on purpose: follow the swap and keep monitoring the new
+	// process instead of shutting down.
 	processExitCh := make(chan error, 1)
 	if process != nil {
 		go func() {
 			defer close(processExitCh)
 			defer gracefulCancel()
-			if err := process.Wait(); err != nil {
-				if errors.Is(err, termexec.ErrNonZeroExitCode) {
-					processExitCh <- xerrors.Errorf("========\n%s\n========\n: %w", strings.TrimSpace(process.ReadScreen()), err)
-				} else {
-					processExitCh <- xerrors.Errorf("failed to wait for process: %w", err)
+			p := process
+			for {
+				err := p.Wait()
+				if supervisor != nil {
+					if cur := supervisor.currentSettled(); cur != nil && cur != p {
+						p = cur
+						continue
+					}
 				}
+				if err != nil {
+					if errors.Is(err, termexec.ErrNonZeroExitCode) {
+						processExitCh <- xerrors.Errorf("========\n%s\n========\n: %w", strings.TrimSpace(p.ReadScreen()), err)
+					} else {
+						processExitCh <- xerrors.Errorf("failed to wait for process: %w", err)
+					}
+				}
+				return
 			}
 		}()
 	}
