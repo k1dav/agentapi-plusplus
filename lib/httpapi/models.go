@@ -143,8 +143,9 @@ type InfoResponse struct {
 
 type MessagesClearResponse struct {
 	Body struct {
-		Count int  `json:"count" doc:"Number of messages cleared"`
-		Ok    bool `json:"ok" doc:"Whether messages were cleared"`
+		Count      int  `json:"count" doc:"Number of messages cleared"`
+		Ok         bool `json:"ok" doc:"Whether messages were cleared"`
+		NewSession bool `json:"new_session" doc:"Whether the agent's new-session command (claude: /clear, codex: /new) was sent"`
 	}
 }
 

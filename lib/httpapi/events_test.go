@@ -198,6 +198,29 @@ func TestEventEmitter(t *testing.T) {
 		assert.Equal(t, 1, since[0].Id)
 	})
 
+	t.Run("timeline-clear", func(t *testing.T) {
+		emitter := NewEventEmitter(WithSubscriptionBufSize(10))
+		emitter.EmitTimelineEvent(transcript.TimelineEvent{Kind: transcript.KindText, Content: "one"})
+		emitter.EmitTimelineEvent(transcript.TimelineEvent{Kind: transcript.KindText, Content: "two"})
+		assert.Len(t, emitter.Timeline(-1, ""), 2)
+
+		emitter.ClearTimeline()
+		assert.Empty(t, emitter.Timeline(-1, ""))
+
+		// New subscribers get no timeline replay after a clear.
+		_, _, stateEvents := emitter.Subscribe()
+		for _, ev := range stateEvents {
+			assert.NotEqual(t, EventTypeTimeline, ev.Type)
+		}
+
+		// Ids stay monotonic across the clear, so since_id polling works.
+		emitter.EmitTimelineEvent(transcript.TimelineEvent{Kind: transcript.KindText, Content: "three"})
+		events := emitter.Timeline(-1, "")
+		assert.Len(t, events, 1)
+		assert.Equal(t, 2, events[0].Id)
+		assert.Empty(t, emitter.Timeline(2, ""))
+	})
+
 	t.Run("timeline-replay-cap", func(t *testing.T) {
 		emitter := NewEventEmitter(WithSubscriptionBufSize(10))
 		for i := range maxTimelineReplay + 100 {

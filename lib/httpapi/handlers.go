@@ -2,8 +2,10 @@ package httpapi
 
 import (
 	"context"
+	"time"
 
 	"github.com/coder/agentapi/internal/version"
+	mf "github.com/coder/agentapi/lib/msgfmt"
 )
 
 // This file holds the auxiliary read/info endpoints that complement the core
@@ -30,8 +32,31 @@ func (s *Server) getInfo(ctx context.Context, input *struct{}) (*InfoResponse, e
 	return resp, nil
 }
 
-// clearMessages handles DELETE /messages — clears the conversation history.
-func (s *Server) clearMessages(ctx context.Context, input *struct{}) (*MessagesClearResponse, error) {
+// newSessionCommand returns the slash command that starts a fresh session
+// in the agent's TUI, for agents that support one.
+func newSessionCommand(agentType mf.AgentType) (string, bool) {
+	switch agentType {
+	case mf.AgentTypeClaude:
+		return "/clear", true
+	case mf.AgentTypeCodex:
+		return "/new", true
+	default:
+		return "", false
+	}
+}
+
+// slashCommandMenuDelay is the pause between typing a slash command and
+// pressing enter, letting the TUI's command menu settle so enter executes
+// the typed command instead of a menu selection mid-render.
+const slashCommandMenuDelay = 300 * time.Millisecond
+
+// clearMessages handles DELETE /messages — clears the conversation history
+// and timeline, and (by default) resets the agent's own session so its
+// context matches the cleared history.
+func (s *Server) clearMessages(ctx context.Context, input *struct {
+	NewSession bool `query:"new_session" default:"true" doc:"Also reset the agent's own session by sending its new-session command (claude: /clear, codex: /new). The agent should be in the 'stable' state for the command to take effect. Set to false to only clear AgentAPI's stored history."`
+},
+) (*MessagesClearResponse, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -40,8 +65,28 @@ func (s *Server) clearMessages(ctx context.Context, input *struct{}) (*MessagesC
 	if clearer, ok := any(s.conversation).(interface{ ClearMessages() }); ok {
 		clearer.ClearMessages()
 	}
+	s.emitter.ClearTimeline()
+
+	newSessionSent := false
+	if input.NewSession && s.agentio != nil {
+		if cmd, ok := newSessionCommand(s.agentType); ok {
+			// Raw keystrokes, not conversation.Send: user messages are
+			// bracketed-pasted, which prevents slash-command interpretation.
+			if _, err := s.agentio.Write([]byte(cmd)); err == nil {
+				time.Sleep(slashCommandMenuDelay)
+				if _, err := s.agentio.Write([]byte("\r")); err == nil {
+					newSessionSent = true
+				}
+			}
+			if !newSessionSent {
+				s.logger.Warn("Failed to send new-session command to agent", "command", cmd)
+			}
+		}
+	}
+
 	resp.Body.Ok = true
 	resp.Body.Count = count
+	resp.Body.NewSession = newSessionSent
 	return resp, nil
 }
 

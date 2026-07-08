@@ -354,6 +354,10 @@
             "format": "int64",
             "type": "integer"
           },
+          "new_session": {
+            "description": "Whether the agent's new-session command (claude: /clear, codex: /new) was sent",
+            "type": "boolean"
+          },
           "ok": {
             "description": "Whether messages were cleared",
             "type": "boolean"
@@ -361,6 +365,7 @@
         },
         "required": [
           "count",
+          "new_session",
           "ok"
         ],
         "type": "object"
@@ -962,8 +967,21 @@
     },
     "/messages": {
       "delete": {
-        "description": "Clears the conversation history with the agent.",
+        "description": "Clears the conversation history with the agent, including the structured timeline (GET /timeline). Timeline event ids keep increasing after a clear, so since_id polling remains valid. By default this also resets the agent's own session (claude: /clear, codex: /new) so the agent's context matches the cleared history; pass ?new_session=false to skip that.",
         "operationId": "delete-messages",
+        "parameters": [
+          {
+            "description": "Also reset the agent's own session by sending its new-session command (claude: /clear, codex: /new). The agent should be in the 'stable' state for the command to take effect. Set to false to only clear AgentAPI's stored history.",
+            "explode": false,
+            "in": "query",
+            "name": "new_session",
+            "schema": {
+              "default": true,
+              "description": "Also reset the agent's own session by sending its new-session command (claude: /clear, codex: /new). The agent should be in the 'stable' state for the command to take effect. Set to false to only clear AgentAPI's stored history.",
+              "type": "boolean"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {

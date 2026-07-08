@@ -494,7 +494,7 @@ func (s *Server) registerRoutes() {
 
 	// DELETE /messages endpoint — clear the conversation history.
 	huma.Delete(s.api, "/messages", s.clearMessages, func(o *huma.Operation) {
-		o.Description = "Clears the conversation history with the agent."
+		o.Description = "Clears the conversation history with the agent, including the structured timeline (GET /timeline). Timeline event ids keep increasing after a clear, so since_id polling remains valid. By default this also resets the agent's own session (claude: /clear, codex: /new) so the agent's context matches the cleared history; pass ?new_session=false to skip that."
 		o.Middlewares = []func(huma.Context, func(huma.Context)){authMW}
 	})
 

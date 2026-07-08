@@ -316,6 +316,15 @@ func (e *EventEmitter) EmitTimelineEvent(ev transcript.TimelineEvent) {
 	e.notifyChannels(EventTypeTimeline, body)
 }
 
+// ClearTimeline drops all stored timeline events. The id counter keeps
+// increasing so clients polling with since_id never miss events emitted
+// after a clear.
+func (e *EventEmitter) ClearTimeline() {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.timeline = nil
+}
+
 // Timeline returns stored timeline events with id > sinceId, optionally
 // filtered by kind (empty kind matches all).
 func (e *EventEmitter) Timeline(sinceId int, kind TimelineKind) []TimelineEventBody {
