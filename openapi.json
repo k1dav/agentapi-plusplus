@@ -198,6 +198,53 @@
         ],
         "type": "object"
       },
+      "Link": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "Id of the timeline event or message the URL was found in",
+            "format": "int64",
+            "type": "integer"
+          },
+          "source": {
+            "description": "Where the URL was found: 'timeline' (exact, from the agent's transcript) or 'message' (screen-scraped, de-wrapped heuristically)",
+            "type": "string"
+          },
+          "url": {
+            "description": "The extracted URL",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "source",
+          "url"
+        ],
+        "type": "object"
+      },
+      "LinksResponseBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "example": "https://example.com/schemas/LinksResponseBody.json",
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "links": {
+            "description": "Unique URLs in order of first appearance. Timeline-sourced URLs are preferred over screen-scraped ones.",
+            "items": {
+              "$ref": "#/components/schemas/Link"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "links"
+        ],
+        "type": "object"
+      },
       "LogsResponseBody": {
         "additionalProperties": false,
         "properties": {
@@ -971,6 +1018,35 @@
           }
         },
         "summary": "Get info"
+      }
+    },
+    "/links": {
+      "get": {
+        "description": "Returns the unique URLs found in the conversation. URLs from timeline events are exact (transcript-sourced, never line-wrapped); URLs from screen-scraped messages are rejoined heuristically when the terminal wrapped them across lines.",
+        "operationId": "get-links",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinksResponseBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get links"
       }
     },
     "/logs": {

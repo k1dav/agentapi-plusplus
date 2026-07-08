@@ -523,6 +523,11 @@ func (s *Server) registerRoutes() {
 		o.Description = "Returns the structured timeline captured from the agent's transcript files: thinking, text, tool calls, and tool results. Empty when timeline capture is disabled or unsupported for the agent type."
 	})
 
+	// GET /links endpoint.
+	huma.Get(s.api, "/links", s.getLinks, func(o *huma.Operation) {
+		o.Description = "Returns the unique URLs found in the conversation. URLs from timeline events are exact (transcript-sourced, never line-wrapped); URLs from screen-scraped messages are rejoined heuristically when the terminal wrapped them across lines."
+	})
+
 	// GET /mcp endpoint.
 	huma.Get(s.api, "/mcp", s.getMcp, func(o *huma.Operation) {
 		o.Description = "Returns the agent's currently configured MCP servers (claude: project .mcp.json, codex: ~/.codex/config.toml). Errors for agent types without MCP config support."

@@ -13,6 +13,7 @@ Fork lineage: [coder/agentapi](https://github.com/coder/agentapi) → KooshaPari
 - **Structured timeline** — thinking / tool calls / tool results captured from the agent's own transcript files, exposed via `GET /timeline` and SSE `timeline_event` (see below)
 - **`DELETE /messages` resets the agent session** — clears history + timeline and sends the agent's new-session command (claude: `/clear`, codex: `/new`)
 - **Runtime MCP config** — `GET /mcp` / `PUT /mcp` manage the agent's MCP servers on the fly; `?restart=true` restarts the agent process in place so changes apply immediately
+- **`GET /links`** — copy-safe URL extraction: the terminal hard-wraps long URLs across lines; this returns them whole (transcript-sourced when available, heuristically rejoined otherwise)
 - **Chat UI process view** — inline collapsible tool-call cards and a filterable timeline side panel
 - **API-key auth** on mutating routes (`--api-key` / `AGENTAPI_API_KEY`)
 - Extra read endpoints: `/info`, `/health`, `/version`, `/ready`, `/messages/count`
@@ -41,6 +42,7 @@ Build from source: `go build -o agentapi main.go` (chat UI assets are embedded s
 | POST `/message` | Send a message (`user` or `raw` keystrokes); auth-gated |
 | DELETE `/messages` | Clear history **and timeline**, and reset the agent's session (`?new_session=false` to skip); auth-gated |
 | GET `/timeline` | Structured process events; `?kind=` and `?since_id=` filters |
+| GET `/links` | Unique URLs found in the conversation — exact even when the terminal line-wrapped them |
 | GET `/mcp` | Currently configured MCP servers and the config file path |
 | PUT `/mcp` | Replace the MCP server set; `?restart=true` restarts the agent to apply immediately; auth-gated |
 | GET `/status` | Agent status: `stable` or `running` |
