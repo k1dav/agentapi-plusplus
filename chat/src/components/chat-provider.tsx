@@ -102,6 +102,7 @@ interface ChatContextValue {
   sendMessage: (message: string, type?: MessageType) => void;
   uploadFiles: (formData: FormData) => Promise<FileUploadResponse>;
   agentType: AgentType;
+  agentAPIUrl: string;
 }
 
 const ChatContext = createContext<ChatContextValue | undefined>(undefined);
@@ -408,6 +409,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
         serverStatus,
         uploadFiles,
         agentType,
+        agentAPIUrl,
       }}
     >
       {children}

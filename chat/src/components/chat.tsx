@@ -24,14 +24,14 @@ export function Chat() {
           serverStatus={serverStatus}
         />
       </div>
-      {!panelOpen && timeline.length > 0 && (
+      {!panelOpen && (
         <Button
           variant="outline"
           size="icon"
           className="absolute top-2 right-2 z-10 size-8"
           onClick={() => setPanelOpen(true)}
-          aria-label="Open timeline"
-          title="Timeline"
+          aria-label="Open timeline and links"
+          title="Timeline & links"
         >
           <ListTree className="size-4" />
         </Button>
